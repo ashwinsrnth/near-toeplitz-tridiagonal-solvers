@@ -42,7 +42,12 @@ smemcyclicreduction.prepare('PPPPiiiii')
 by = 1
 bz = 1
 
-smemcyclicreduction.prepared_call((1, ny/by, nz/bz), (nx, by, bz),
+for i in range(5):
+    d_d = gpuarray.to_gpu(d)
+    start = cuda.Event()
+    end = cuda.Event()
+    start.record()
+    smemcyclicreduction.prepared_call((1, ny/by, nz/bz), (nx, by, bz),
         a_d.gpudata,
         b_d.gpudata,
         c_d.gpudata,
@@ -52,6 +57,9 @@ smemcyclicreduction.prepared_call((1, ny/by, nz/bz), (nx, by, bz),
         nz,
         nx,
         by)
+    end.record()
+    end.synchronize()
+    print start.time_till(end)*1e-3
 
 #x = d_d.get()
 #for i in range(nz):
