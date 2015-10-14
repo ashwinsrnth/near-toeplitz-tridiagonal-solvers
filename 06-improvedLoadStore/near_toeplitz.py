@@ -66,10 +66,10 @@ class NearToeplitzSolver:
         self.k1_first_d = gpuarray.to_gpu(k1_first)
         self.k1_last_d = gpuarray.to_gpu(k1_last)
         
-        self.cyclic_reduction, = kernels.get_funcs('kernels-shared.cu', 'sharedMemCyclicReduction') 
-        self.cyclic_reduction.prepare('PPPPPPPPPdddddiiiii')
+        self.cyclic_reduction, = kernels.get_funcs('kernels.cu', 'sharedMemCyclicReduction') 
+        self.cyclic_reduction.prepare('PPPPPPPPPdddddiii')
         
-    def solve(self, x_d, block_sizes):
+    def solve(self, x_d):
 
         '''
             Solve the tridiagonal system
@@ -80,14 +80,11 @@ class NearToeplitzSolver:
             ai, bi, ci,
                 an, bn] = self.coeffs
 
-        bx = self.nx/2
-        (bz, by) = block_sizes
-
         # CR algorithm
         # ============================================
         self.cyclic_reduction.prepared_call(
-                 (1, self.ny/by, self.nz/bz),
-                 (self.nx/2, by, bz),
+                 (1, self.ny, self.nz),
+                 (self.nx/2, 1, 1),
                  self.a_d.gpudata,
                  self.b_d.gpudata,
                  self.c_d.gpudata,
@@ -104,9 +101,7 @@ class NearToeplitzSolver:
                  ci,
                  np.int32(self.nx),
                  np.int32(self.ny),
-                 np.int32(self.nz),
-                 np.int32(bx),
-                 np.int32(by))
+                 np.int32(self.nz))
 
 def _precompute_coefficients(system_size, coeffs):
     '''

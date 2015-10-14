@@ -4,9 +4,9 @@ import numpy as np
 import kernels
 from near_toeplitz import *
 
-nz = 512
-ny = 512
-nx = 512
+nz = 256
+ny = 256
+nx = 256
 d = np.random.rand(nz, ny, nx)
 d_d = gpuarray.to_gpu(d)
 cfd = NearToeplitzSolver(d.shape, [1., 2., 1./4, 1., 1./4, 2., 1.])
