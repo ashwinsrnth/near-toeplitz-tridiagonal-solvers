@@ -12,16 +12,12 @@ __global__ void sharedMemCyclicReduction( double *a_d,
                                 const double c1,
                                 const double ai,
                                 const double bi,
-                                const double ci,
-                                int nx,
-                                int ny,
-                                int nz,
-                                int bx,
-                                int by) {
+                                const double ci)
+                                {
     /*
 
     */
-    __shared__ double d_l[32];
+    __shared__ double d_l[128/2];
 
     int ix = blockIdx.x*blockDim.x + threadIdx.x; 
     int iy = blockIdx.y*blockDim.y + threadIdx.y; 
@@ -31,8 +27,8 @@ __global__ void sharedMemCyclicReduction( double *a_d,
     int liz = threadIdx.z; 
     int i, m, n;
     int idx, stride;
-    int i3d0 = iz*(nx*ny) + iy*nx + 0;
-    int li3d0 = liz*(bx*by) + liy*bx + 0;
+    int i3d0 = iz*(128*128) + iy*128 + 0;
+    int li3d0 = liz*(128*1)/2 + liy*128/2 + 0;
     double k1, k2;
     double d_m, d_n;
 
@@ -44,7 +40,7 @@ __global__ void sharedMemCyclicReduction( double *a_d,
                     d_d[i3d0+2*lix]*k1_first_d[idx] - \
                     d_d[i3d0+2*lix+2]*k2_d[idx];
     }
-    else if (lix == (nx/2-1)) {
+    else if (lix == (128/2-1)) {
         d_l[li3d0+lix] = d_d[i3d0+2*lix+1] - \
                      d_d[i3d0+2*lix]*k1_last_d[idx];
     }
@@ -59,27 +55,27 @@ __global__ void sharedMemCyclicReduction( double *a_d,
     
     /* Do the remaining forward reduction steps: */
     stride = 1;
-    for (int step=0; step<rint(log2((float) nx/2)); step++) {
+    for (int step=0; step<rint(log2((float) 128/2)); step++) {
         stride = stride*2;
         idx = idx + 1;
-        if (lix < nx/(2*stride)) {
+        if (lix < 128/(2*stride)) {
             i = (stride-1) + lix*stride;
 
-            if (stride == nx/2) {
+            if (stride == 128/2) {
                 if (lix == 0) {
-                    m = rint(log2((float) nx/2)) - 1;
-                    n = rint(log2((float) nx/2));
+                    m = rint(log2((float) 128/2)) - 1;
+                    n = rint(log2((float) 128/2));
 
-                    d_m = (d_l[li3d0+nx/4-1]*b_d[n] - \
-                           c_d[m]*d_l[li3d0+nx/2-1])/ \
+                    d_m = (d_l[li3d0+128/4-1]*b_d[n] - \
+                           c_d[m]*d_l[li3d0+128/2-1])/ \
                         (b_first_d[m]*b_d[n] - c_d[m]*a_d[n]);
 
-                    d_n = (b_first_d[m]*d_l[li3d0+nx/2-1] - \
-                           d_l[li3d0+nx/4-1]*a_d[n])/ \
+                    d_n = (b_first_d[m]*d_l[li3d0+128/2-1] - \
+                           d_l[li3d0+128/4-1]*a_d[n])/ \
                         (b_first_d[m]*b_d[n] - c_d[m]*a_d[n]);
 
-                    d_l[li3d0+nx/4-1] = d_m;
-                    d_l[li3d0+nx/2-1] = d_n;
+                    d_l[li3d0+128/4-1] = d_m;
+                    d_l[li3d0+128/2-1] = d_n;
                 }
             }
 
@@ -90,7 +86,7 @@ __global__ void sharedMemCyclicReduction( double *a_d,
                                 d_l[ix - stride/2]*k1_first_d[idx] - \
                                 d_l[ix + stride/2]*k2_d[idx];
                 }
-                else if (i == (nx/2-1)) {
+                else if (i == (128/2-1)) {
                     d_l[ix] = d_l[ix] - \
                                  d_l[ix - stride/2]*k1_last_d[idx];
                 }
@@ -103,11 +99,11 @@ __global__ void sharedMemCyclicReduction( double *a_d,
         __syncthreads();
     }
      
-    idx = rint(log2((float) nx))-2;
-    for (int step=0; step<rint(log2((float) nx))-2; step++) {
+    idx = rint(log2((float) 128))-2;
+    for (int step=0; step<rint(log2((float) 128))-2; step++) {
         stride = stride/2;
         idx = idx - 1;
-        if (lix < nx/(2*stride)){
+        if (lix < 128/(2*stride)){
             i = (stride/2-1) + lix*stride;
             ix = li3d0 + i;
             if (lix == 0) {
@@ -135,4 +131,3 @@ __global__ void sharedMemCyclicReduction( double *a_d,
     
     __syncthreads();
 }
-
