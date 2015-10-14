@@ -70,7 +70,7 @@ class NearToeplitzSolver:
         self.cyclic_reduction, = kernels.get_funcs('kernels.cu', 'sharedMemCyclicReduction') 
         self.cyclic_reduction.prepare('PPPPPPPPPddddd')
         
-    def solve(self, x_d, block_sizes):
+    def solve(self, x_d):
 
         '''
             Solve the tridiagonal system

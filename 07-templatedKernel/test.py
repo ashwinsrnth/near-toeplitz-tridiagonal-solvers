@@ -33,7 +33,7 @@ end = cuda.Event()
 
 for i in range(10):
     start.record()
-    cfd.solve(d_d, (1, 1))
+    cfd.solve(d_d)
     end.record()
     end.synchronize()
     print start.time_till(end)*1e-3
