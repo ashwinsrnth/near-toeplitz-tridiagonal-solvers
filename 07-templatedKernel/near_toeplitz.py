@@ -66,6 +66,7 @@ class NearToeplitzSolver:
         self.k1_first_d = gpuarray.to_gpu(k1_first)
         self.k1_last_d = gpuarray.to_gpu(k1_last)
         
+        kernels.render_kernel('kernels.jinja2', 'kernels.cu', nx=self.nx, ny=self.ny, nz=self.nz, bx=self.nx/2, by=1)
         self.cyclic_reduction, = kernels.get_funcs('kernels.cu', 'sharedMemCyclicReduction') 
         self.cyclic_reduction.prepare('PPPPPPPPPddddd')
         
