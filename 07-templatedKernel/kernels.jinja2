@@ -51,52 +51,49 @@ __global__ void sharedMemCyclicReduction( double *a_d,
     
     /* Do the remaining forward reduction steps: */
     stride = 1;
-    for (int stride=2; stride<{{nx}}; stride=stride*2) {
+    for (int stride=2; stride<{{nx}}/2; stride=stride*2) {
         idx = idx + 1;
+        i = (stride-1) + tix*stride;
         if (tix < {{nx}}/(2*stride)) {
-            i = (stride-1) + tix*stride;
-            if (stride == {{nx}}/2) {
-                if (tix == 0) {
-                    m = rint(log2((float) {{nx}}/2)) - 1;
-                    n = rint(log2((float) {{nx}}/2));
-
-                    d_m = (d_l[{{nx}}/4-1]*b_d[n] - \
-                           c_d[m]*d_l[{{nx}}/2-1])/ \
-                        (b_first_d[m]*b_d[n] - c_d[m]*a_d[n]);
-
-                    d_n = (b_first_d[m]*d_l[{{nx}}/2-1] - \
-                           d_l[{{nx}}/4-1]*a_d[n])/ \
-                        (b_first_d[m]*b_d[n] - c_d[m]*a_d[n]);
-
-                    d_l[{{nx}}/4-1] = d_m;
-                    d_l[{{nx}}/2-1] = d_n;
-                }
+            if (tix == 0) {
+                d_l[i] = d_l[i] - \
+                            d_l[i - stride/2]*k1_first_d[idx] - \
+                            d_l[i + stride/2]*k2_d[idx];
             }
-
+            else if (i == ({{nx}}/2-1)) {
+                d_l[i] = d_l[i] - \
+                             d_l[i - stride/2]*k1_last_d[idx];
+            }
             else {
-                if (tix == 0) {
-                    d_l[i] = d_l[i] - \
-                                d_l[i - stride/2]*k1_first_d[idx] - \
-                                d_l[i + stride/2]*k2_d[idx];
-                }
-                else if (i == ({{nx}}/2-1)) {
-                    d_l[i] = d_l[i] - \
-                                 d_l[i - stride/2]*k1_last_d[idx];
-                }
-                else {
-                    d_l[i] = d_l[i] - d_l[i-stride/2]*k1_d[idx] - \
-                                d_l[i+stride/2]*k2_d[idx];
-                }
+                d_l[i] = d_l[i] - d_l[i-stride/2]*k1_d[idx] - \
+                            d_l[i+stride/2]*k2_d[idx];
             }
         }
         __syncthreads();
     }
+
+    if (tix == 0) {
+        m = rint(log2((float) {{nx}}/2)) - 1;
+        n = rint(log2((float) {{nx}}/2));
+
+        d_m = (d_l[{{nx}}/4-1]*b_d[n] - \
+               c_d[m]*d_l[{{nx}}/2-1])/ \
+            (b_first_d[m]*b_d[n] - c_d[m]*a_d[n]);
+
+        d_n = (b_first_d[m]*d_l[{{nx}}/2-1] - \
+               d_l[{{nx}}/4-1]*a_d[n])/ \
+            (b_first_d[m]*b_d[n] - c_d[m]*a_d[n]);
+
+        d_l[{{nx}}/4-1] = d_m;
+        d_l[{{nx}}/2-1] = d_n;
+    }
+    __syncthreads();
     
     idx = rint(log2((float) {{nx}}))-2;
     for (int stride={{nx}}/4; stride>1; stride=stride/2) {
         idx = idx - 1;
+        i = (stride/2-1) + tix*stride;
         if (tix < {{nx}}/(2*stride)){
-            i = (stride/2-1) + tix*stride;
             if (tix == 0) {
                 d_l[i] = (d_l[i] - c_d[idx]*d_l[i+stride/2])/\
                             b_first_d[idx];
@@ -120,6 +117,7 @@ __global__ void sharedMemCyclicReduction( double *a_d,
         d_d[line_start+2*tix+1] = d_l[tix];
     } 
     
+
     __syncthreads();
 }
 

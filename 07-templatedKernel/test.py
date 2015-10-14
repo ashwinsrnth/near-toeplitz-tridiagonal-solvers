@@ -22,16 +22,16 @@ def scipy_solve_banded(a, b, c, rhs):
     x = solve_banded(l_and_u, ab, rhs)
     return x
 
-nz = 64
-ny = 64
-nx = 64
+nz = 512
+ny = 512
+nx = 512
 d = np.random.rand(nz, ny, nx)
 d_d = gpuarray.to_gpu(d)
 cfd = NearToeplitzSolver(d.shape, [1., 2., 1./4, 1., 1./4, 2., 1.])
 start = cuda.Event()
 end = cuda.Event()
 
-for i in range(1):
+for i in range(10):
     start.record()
     cfd.solve(d_d)
     end.record()
@@ -46,11 +46,11 @@ c[-1] = 0
 c[0] = 2
 a[-1] = 2
 
-
+'''
 x = d_d.get()
 
 for i in range(nz):
     for j in range(ny):
         x_true = scipy_solve_banded(a, b, c, d[i, j, :])
         assert_allclose(x_true, x[i, j, :])
-
+'''
