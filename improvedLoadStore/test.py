@@ -53,8 +53,5 @@ for i in range(nz):
     for j in range(ny):
         print i, j
         x_true = scipy_solve_banded(a, b, c, d[i, j, :])
-        print x
-        print x_true
-        #assert_allclose(x_true, x[i, j, :])
-        #assert_allclose(x[i, j, nx/2-1], x_true[nx/2-1])
+        assert_allclose(x_true, x[i, j, :])
 '''

@@ -7,7 +7,7 @@ def get_funcs(filename, *args):
     src_dir = os.path.dirname(__file__)
     with open(src_dir + '/' + filename) as f:
         kernel_source = f.read()
-    module = compiler.SourceModule(kernel_source, options=['-O2'], arch='sm_35')
+    module = compiler.SourceModule(kernel_source, options=['-lineinfo', '-O2'], arch='sm_35')
     
     funcs = []
     for func_name in args:

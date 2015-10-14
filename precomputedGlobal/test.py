@@ -4,16 +4,16 @@ import numpy as np
 import kernels
 from near_toeplitz import *
 
-nz = 256
-ny = 256
-nx = 256
-d = np.random.rand(256, 256, 256)
+nz = 128
+ny = 128
+nx = 128
+d = np.random.rand(nz, ny, nx)
 d_d = gpuarray.to_gpu(d)
 cfd = NearToeplitzSolver(d.shape, [1., 2., 1./4, 1., 1./4, 2., 1.])
 start = cuda.Event()
 end = cuda.Event()
 
-for i in range(2):
+for i in range(10):
     start.record()
     cfd.solve(d_d, (1, 1))
     end.record()

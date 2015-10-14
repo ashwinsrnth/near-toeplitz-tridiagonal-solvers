@@ -31,12 +31,8 @@ __global__ void sharedMemCyclicReduction( double *a_d,
     int liz = threadIdx.z; 
     int i, m, n;
     int idx, stride;
-
-    int i3d = iz*(nx*ny) + iy*nx + ix;
     int i3d0 = iz*(nx*ny) + iy*nx + 0;
-    int li3d = liz*(bx*by) + liy*bx + lix;
     int li3d0 = liz*(bx*by) + liy*bx + 0;
-
     double k1, k2;
     double d_m, d_n;
 
