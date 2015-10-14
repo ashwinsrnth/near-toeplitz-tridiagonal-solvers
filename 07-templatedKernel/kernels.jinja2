@@ -51,8 +51,7 @@ __global__ void sharedMemCyclicReduction( double *a_d,
     
     /* Do the remaining forward reduction steps: */
     stride = 1;
-    for (int step=0; step<rint(log2((float) {{nx}}/2)); step++) {
-        stride = stride*2;
+    for (int stride=2; stride<{{nx}}; stride=stride*2) {
         idx = idx + 1;
         if (tix < {{nx}}/(2*stride)) {
             i = (stride-1) + tix*stride;
@@ -92,10 +91,9 @@ __global__ void sharedMemCyclicReduction( double *a_d,
         }
         __syncthreads();
     }
-
+    
     idx = rint(log2((float) {{nx}}))-2;
-    for (int step=0; step<rint(log2((float) {{nx}}))-2; step++) {
-        stride = stride/2;
+    for (int stride={{nx}}/4; stride>1; stride=stride/2) {
         idx = idx - 1;
         if (tix < {{nx}}/(2*stride)){
             i = (stride/2-1) + tix*stride;
