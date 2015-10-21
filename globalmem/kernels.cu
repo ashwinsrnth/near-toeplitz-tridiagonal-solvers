@@ -15,12 +15,10 @@ __global__ void globalForwardReduction(const double *a_d,
     int gix = blockIdx.x*blockDim.x + threadIdx.x;
     int giy = blockIdx.y*blockDim.y + threadIdx.y;
     int giz = blockIdx.z*blockDim.z + threadIdx.z;
-    int i, idx;
+    int i, idx, i0;
     int m, n;
-    int i, i0;
     double x_m, x_n;
 
-    i = giz*(nx*ny) + giy*nx + gix;
     i0 = giz*(nx*ny) + giy*nx + 0;
 
     // forward reduction
@@ -78,23 +76,20 @@ __global__ void globalBackSubstitution(const double *a_d,
     int gix = blockIdx.x*blockDim.x + threadIdx.x;
     int giy = blockIdx.y*blockDim.y + threadIdx.y;
     int giz = blockIdx.z*blockDim.z + threadIdx.z;
-    int i;
-    int idx;
-    int gi3d, gi3d0;
+    int i, idx, i0;
 
-    gi3d0 = giz*(nx*ny) + giy*nx + 0;
-    i = (stride/2-1) + gix*stride;
-    gi3d = gi3d0 + i;
+    i0 = giz*(nx*ny) + giy*nx + 0;
+    i = i0 + (stride/2-1) + gix*stride;
 
     if (stride == 2)
     {
         if (i == 0)
         {
-            d_d[gi3d] = (d_d[gi3d] - c1*d_d[gi3d + 1])/b1;
+            d_d[i] = (d_d[i] - c1*d_d[i + 1])/b1;
         }
         else
         {
-            d_d[gi3d] = (d_d[gi3d] - (ai)*d_d[gi3d - 1] - (ci)*d_d[gi3d + 1])/bi;
+            d_d[i] = (d_d[i] - (ai)*d_d[i - 1] - (ci)*d_d[i + 1])/bi;
         }
     }
     else
@@ -103,11 +98,11 @@ __global__ void globalBackSubstitution(const double *a_d,
         idx = rint(log2((double)stride)) - 2;
         if (gix == 0) 
         {   
-            d_d[gi3d] = (d_d[gi3d] - c_d[idx]*d_d[gi3d + stride/2])/b_first_d[idx];
+            d_d[i] = (d_d[i] - c_d[idx]*d_d[i + stride/2])/b_first_d[idx];
         }
         else
         {
-            d_d[gi3d] = (d_d[gi3d] - a_d[idx]*d_d[gi3d - stride/2] - c_d[idx]*d_d[gi3d + stride/2])/b_d[idx];
+            d_d[i] = (d_d[i] - a_d[idx]*d_d[i - stride/2] - c_d[idx]*d_d[i + stride/2])/b_d[idx];
         }
     }
 }
