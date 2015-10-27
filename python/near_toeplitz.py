@@ -40,31 +40,29 @@ class NearToeplitzSolver:
 
         for rhs in range(self.nrhs):
             stride = 1
-            for step in np.arange(int(np.log2(self.N))):
+            for step in np.arange(int(np.log2(self.N))-1):
                 stride *= 2
-                if stride == self.N:
-                    stride /= 2
-                    m = int(np.log2(stride)) - 1
-                    n = int(np.log2(stride))
-                    d[stride-1], d[2*stride-1] = solve_two_by_two(
-                        np.array([[b_first[m], c[m]],
-                                  [a[n], b[n]]]),
-                        np.array([d[stride-1], d[2*stride-1]]))
-                else:
-                    for i in range(stride-1, self.N, stride):
-                        idx = int(np.log2(stride)) - 1
-                        if i == stride-1:
-                            d[i] = (d[i] - 
-                                d[i-stride/2]*k1_first[idx] -
-                                d[i+stride/2]*k2[idx])
-                        elif i == self.N-1:
-                            d[i] = (d[i] - 
-                                d[i-stride/2]*k1_last[idx])
-                        else:
-                            d[i] = (d[i] -
-                                d[i-stride/2]*k1[idx] -
-                                d[i+stride/2]*k2[idx])
-            stride = self.N
+                idx = int(np.log2(stride)) - 1
+                for i in range(stride-1, self.N, stride):
+                    if i == stride-1:
+                        d[i] = (d[i] - 
+                            d[i-stride/2]*k1_first[idx] -
+                            d[i+stride/2]*k2[idx])
+                    elif i == self.N-1:
+                        d[i] = (d[i] - 
+                            d[i-stride/2]*k1_last[idx])
+                    else:
+                        d[i] = (d[i] -
+                            d[i-stride/2]*k1[idx] -
+                            d[i+stride/2]*k2[idx])
+            stride *= 2
+            m = int(np.log2(stride/2)) - 1
+            n = int(np.log2(stride/2))
+            d[stride/2-1], d[stride-1] = solve_two_by_two(
+                np.array([[b_first[m], c[m]],
+                          [a[n], b[n]]]),
+                np.array([d[stride/2-1], d[stride-1]]))
+
             for i in np.arange(int(np.log2(self.N))-1):
                 stride /= 2
                 for i in range(self.N - stride/2-1, -1, -stride):
@@ -84,19 +82,19 @@ class NearToeplitzSolver:
                               a[idx]*d[i-stride/2] -
                               c[idx]*d[i+stride/2])/b[idx]
 
-def _precompute_coefficients(system_size, coeffs):
+def _precompute_coefficients(N, coeffs):
     '''
     The a, b, c, k1, k2
     used in the Cyclic Reduction Algorithm can be
     *pre-computed*.
     Further, for the special case
-    of constant coefficients,
+    of near-Toeplitz matrices,
     they are the same at (almost) each step of reduction,
     with the exception, of course of the boundary conditions.
 
     Thus, the information can be stored in arrays
-    sized log2(system_size)-1,
-    as opposed to arrays sized system_size.
+    sized log2(N)-1,
+    as opposed to arrays sized N.
 
     Values at the first and last point at each step
     need to be stored seperately.
@@ -108,25 +106,31 @@ def _precompute_coefficients(system_size, coeffs):
 
     -- See the paper
     "Fast Tridiagonal Solvers on the GPU"
+
+    :param N: size of each tridiagonal systems
+    :type N: int
+    :param coeffs: coefficients (b1, c1, ai, bi ci, an, bn)
+        that define the tridiagonal system
+    :type coeffs: tuple
     '''
-    # these arrays technically have length 1 more than required:
-    log2_system_size = int(np.log2(system_size))
-
-    a = np.zeros(log2_system_size, np.float64)
-    b = np.zeros(log2_system_size, np.float64)
-    c = np.zeros(log2_system_size, np.float64)
-    k1 = np.zeros(log2_system_size, np.float64)
-    k2 = np.zeros(log2_system_size, np.float64)
-
-    b_first = np.zeros(log2_system_size, np.float64)
-    k1_first = np.zeros(log2_system_size, np.float64)
-    k1_last = np.zeros(log2_system_size, np.float64)
+    log2_N = int(np.log2(N))
+    
+    # a and b are larger in size by 1:
+    a = np.zeros(log2_N, np.float64)
+    b = np.zeros(log2_N, np.float64)
+    # other coefficient arrays are log2_N-1:
+    c = np.zeros(log2_N-1, np.float64)
+    k1 = np.zeros(log2_N-1, np.float64)
+    k2 = np.zeros(log2_N-1, np.float64)
+    b_first = np.zeros(log2_N-1, np.float64)
+    k1_first = np.zeros(log2_N-1, np.float64)
+    k1_last = np.zeros(log2_N-1, np.float64)
 
     [b1, c1,
         ai, bi, ci,
             an, bn] = coeffs
 
-    num_reductions = log2_system_size - 1
+    num_reductions = log2_N - 1
     for i in range(num_reductions):
         if i == 0:
             k1[i] = ai/bi
@@ -155,16 +159,9 @@ def _precompute_coefficients(system_size, coeffs):
             a_last = -a[i-1]*k1_last[i]
             b_last = b_last - c[i-1]*k1_last[i]
 
-    # put the last values for a and b at the end of the arrays:
+    # put the last values for a and b at the end of the arrays,
+    # these are needed for the 2-by-2 solve
     a[-1] = a_last
     b[-1] = b_last
 
     return a, b, c, k1, k2, b_first, k1_first, k1_last
-
-
-
-
-# precompute coefficients
-# solve the syste
-# check solution
-
