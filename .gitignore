@@ -4,3 +4,4 @@
 *.svg
 *run
 *.o
+07-templatedKernel/*kernels.cu

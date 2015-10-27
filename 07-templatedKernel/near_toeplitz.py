@@ -31,30 +31,24 @@ The tridiagonal system is then of the form:
 
 class NearToeplitzSolver:
 
-    def __init__(self, shape, coeffs):
+    def __init__(self, n, nrhs, coeffs):
         '''
-        Create context for the Cyclic Reduction Solver
-        that solves a "near-toeplitz"
-        tridiagonal system with
-        diagonals:
-        a = (_, ai, ai .... an)
-        b[:] = (b1, bi, bi, bi... bn)
-        c[:] = (c1, ci, ci, ... _)
-
         Parameters
         ----------
-        shape: The size of the tridiagonal system.
+        n: The size of the tridiagonal system.
+        nrhs: The number of right hand sides
         coeffs: A list of coefficients that make up the tridiagonal matrix:
-            [b1, c1, ai, bi, ci, an, bn]
+            (b1, c1, ai, bi, ci, an, bn)
         '''
-        self.nz, self.ny, self.nx = shape
+        self.n = n
+        self.nrhs = nrhs
         self.coeffs = coeffs
 
         # check that system_size is a power of 2:
-        assert np.int(np.log2(self.nx)) == np.log2(self.nx)
+        assert np.int(np.log2(self.n)) == np.log2(self.n)
 
         # compute coefficients a, b, etc.,
-        a, b, c, k1, k2, b_first, k1_first, k1_last = _precompute_coefficients(self.nx, self.coeffs)
+        a, b, c, k1, k2, b_first, k1_first, k1_last = _precompute_coefficients(self.n, self.coeffs)
 
         # copy coefficients to buffers:
         self.a_d = gpuarray.to_gpu(a)
@@ -66,7 +60,7 @@ class NearToeplitzSolver:
         self.k1_first_d = gpuarray.to_gpu(k1_first)
         self.k1_last_d = gpuarray.to_gpu(k1_last)
         
-        kernels.render_kernel('kernels.jinja2', 'kernels.cu', nx=self.nx, ny=self.ny, nz=self.nz, bx=self.nx/2, by=1)
+        kernels.render_kernel('kernels.jinja2', 'kernels.cu', n=self.n, shared_size=self.n/2)
         self.cyclic_reduction, = kernels.get_funcs('kernels.cu', 'sharedMemCyclicReduction') 
         self.cyclic_reduction.prepare('PPPPPPPPPddddd')
         
@@ -84,8 +78,8 @@ class NearToeplitzSolver:
         # CR algorithm
         # ============================================
         self.cyclic_reduction.prepared_call(
-                 (1, self.ny, self.nz),
-                 (self.nx/2, 1, 1),
+                 (self.nrhs, 1, 1),
+                 (self.n/2, 1, 1),
                  self.a_d.gpudata,
                  self.b_d.gpudata,
                  self.c_d.gpudata,

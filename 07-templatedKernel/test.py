@@ -27,7 +27,7 @@ ny = 256
 nx = 256
 d = np.random.rand(nz, ny, nx)
 d_d = gpuarray.to_gpu(d)
-cfd = NearToeplitzSolver(d.shape, [1., 2., 1./4, 1., 1./4, 2., 1.])
+cfd = NearToeplitzSolver(nx, ny*nz, (1., 2., 1./4, 1., 1./4, 2., 1.))
 start = cuda.Event()
 end = cuda.Event()
 
