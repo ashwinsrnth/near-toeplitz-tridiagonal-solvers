@@ -31,30 +31,24 @@ The tridiagonal system is then of the form:
 
 class NearToeplitzSolver:
 
-    def __init__(self, shape, coeffs):
+    def __init__(self, n, nrhs, coeffs):
         '''
-        Create context for the Cyclic Reduction Solver
-        that solves a "near-toeplitz"
-        tridiagonal system with
-        diagonals:
-        a = (_, ai, ai .... an)
-        b[:] = (b1, bi, bi, bi... bn)
-        c[:] = (c1, ci, ci, ... _)
-
         Parameters
         ----------
-        shape: The size of the tridiagonal system.
+        n: The size of the tridiagonal system.
+        nrhs: The number of right hand sides
         coeffs: A list of coefficients that make up the tridiagonal matrix:
             [b1, c1, ai, bi, ci, an, bn]
         '''
-        self.nz, self.ny, self.nx = shape
+        self.n = n
+        self.nrhs = nrhs
         self.coeffs = coeffs
 
         # check that system_size is a power of 2:
-        assert np.int(np.log2(self.nx)) == np.log2(self.nx)
+        assert np.int(np.log2(self.n)) == np.log2(self.n)
 
         # compute coefficients a, b, etc.,
-        a, b, c, k1, k2, b_first, k1_first, k1_last = _precompute_coefficients(self.nx, self.coeffs)
+        a, b, c, k1, k2, b_first, k1_first, k1_last = _precompute_coefficients(self.n, self.coeffs)
 
         # copy coefficients to buffers:
         self.a_d = gpuarray.to_gpu(a)
@@ -69,50 +63,38 @@ class NearToeplitzSolver:
         self.forward_reduction, self.back_substitution = kernels.get_funcs('kernels.cu',
                 'globalForwardReduction', 'globalBackSubstitution')
         
-        self.forward_reduction.prepare([
-                np.intp, np.intp, np.intp, np.intp,
-                    np.intp, np.intp, np.intp, np.intp, np.intp,
-                        np.intc, np.intc, np.intc, np.intc])
-        self.back_substitution.prepare([
-                np.intp, np.intp, np.intp, np.intp, np.intp,
-                    np.float64, np.float64, np.float64, np.float64,
-                        np.float64,
-                            np.intc, np.intc, np.intc, np.intc])
+        self.forward_reduction.prepare('PPPPPPPPPii')
+        self.back_substitution.prepare('PPPPPdddddii')
 
-    def solve(self, x_d, block_sizes):
-
+    def solve(self, x_d):
         '''
-            Solve the tridiagonal system
-            for rhs d, given storage for the solution
-            vector in x.
+        Solve the tridiagonal system
+        for rhs d, given storage for the solution
+        vector in x.
         '''
         [b1, c1,
             ai, bi, ci,
                 an, bn] = self.coeffs
 
-        (bz, by) = block_sizes
-
         # CR algorithm
         # ============================================
                 
         stride = 1
-        for i in np.arange(int(np.log2(self.nx))):
+        for i in np.arange(int(np.log2(self.n))):
             stride *= 2
-            self.forward_reduction.prepared_call((1, self.ny/by, self.nz/bz), (self.nx/stride, by, bz),
+            self.forward_reduction.prepared_call((self.nrhs, 1, 1), (self.n/stride, 1, 1),
                 self.a_d.gpudata, self.b_d.gpudata, self.c_d.gpudata, x_d.gpudata, self.k1_d.gpudata, self.k2_d.gpudata,
                     self.b_first_d.gpudata, self.k1_first_d.gpudata, self.k1_last_d.gpudata,
-                        np.int32(self.nx), np.int32(self.ny), np.int32(self.nz),
-                            np.int32(stride))
-        # `stride` is now equal to `nx`
-        for i in np.arange(int(np.log2(self.nx))-1):
+                            self.n, stride)
+
+        # `stride` is now equal to `n`
+        for i in np.arange(int(np.log2(self.n))-1):
             stride /= 2
-            self.back_substitution.prepared_call((1, self.ny/by, self.nz/bz), (self.nx/stride, by, bz),
+            self.back_substitution.prepared_call((self.nrhs, 1, 1), (self.n/stride, 1, 1),
                 self.a_d.gpudata, self.b_d.gpudata, self.c_d.gpudata, x_d.gpudata, self.b_first_d.gpudata,
-                    np.float64(b1), np.float64(c1),
-                        np.float64(ai), np.float64(bi), np.float64(ci),
-                            np.int32(self.nx), np.int32(self.ny), np.int32(self.nz),
-                                np.int32(stride))
-       # ============================================
+                    b1, c1, ai, bi, ci,
+                           self.n, stride)
+
 
 def _precompute_coefficients(system_size, coeffs):
     '''
