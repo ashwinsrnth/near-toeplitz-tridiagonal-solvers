@@ -27,18 +27,10 @@ ny = 256
 nx = 256
 d = np.random.rand(nz, ny, nx)
 d_d = gpuarray.to_gpu(d)
-cfd = NearToeplitzSolver(nx, ny*nz, (1., 2., 1./4, 1., 1./4, 2., 1.))
-start = cuda.Event()
-end = cuda.Event()
+solver = NearToeplitzSolver(nx, ny*nz, (1., 2., 1./4, 1., 1./4, 2., 1.))
+solver.solve(d_d)
+x = d_d.get()
 
-for i in range(10):
-    start.record()
-    cfd.solve(d_d)
-    end.record()
-    end.synchronize()
-    print start.time_till(end)*1e-3
-
-'''
 a = np.ones(nx, dtype=np.float64)*1./4
 b = np.ones(nx, dtype=np.float64)
 c = np.ones(nx, dtype=np.float64)*1./4
@@ -47,10 +39,7 @@ c[-1] = 0
 c[0] = 2
 a[-1] = 2
 
-x = d_d.get()
-
 for i in range(nz):
     for j in range(ny):
         x_true = scipy_solve_banded(a, b, c, d[i, j, :])
         assert_allclose(x_true, x[i, j, :])
-'''

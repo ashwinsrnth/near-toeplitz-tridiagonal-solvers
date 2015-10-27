@@ -38,49 +38,50 @@ class NearToeplitzSolver:
                 self.b_first, self.k1_first, self.k1_last)
         b1, c1, ai, bi, ci, an, bn = self.coeffs
 
-        for rhs in range(self.nrhs):
+        for irhs in range(self.nrhs):
+            offset = irhs*self.N
             stride = 1
             for step in np.arange(int(np.log2(self.N))-1):
                 stride *= 2
                 idx = int(np.log2(stride)) - 1
                 for i in range(stride-1, self.N, stride):
                     if i == stride-1:
-                        d[i] = (d[i] - 
-                            d[i-stride/2]*k1_first[idx] -
-                            d[i+stride/2]*k2[idx])
+                        d[offset+i] = (d[offset+i] - 
+                            d[offset+i-stride/2]*k1_first[idx] -
+                            d[offset+i+stride/2]*k2[idx])
                     elif i == self.N-1:
-                        d[i] = (d[i] - 
-                            d[i-stride/2]*k1_last[idx])
+                        d[offset+i] = (d[offset+i] - 
+                            d[offset+i-stride/2]*k1_last[idx])
                     else:
-                        d[i] = (d[i] -
-                            d[i-stride/2]*k1[idx] -
-                            d[i+stride/2]*k2[idx])
+                        d[offset+i] = (d[offset+i] -
+                            d[offset+i-stride/2]*k1[idx] -
+                            d[offset+i+stride/2]*k2[idx])
             stride *= 2
             m = int(np.log2(stride/2)) - 1
             n = int(np.log2(stride/2))
-            d[stride/2-1], d[stride-1] = solve_two_by_two(
+            d[offset+stride/2-1], d[offset+stride-1] = solve_two_by_two(
                 np.array([[b_first[m], c[m]],
                           [a[n], b[n]]]),
-                np.array([d[stride/2-1], d[stride-1]]))
+                np.array([d[offset+stride/2-1], d[offset+stride-1]]))
 
             for i in np.arange(int(np.log2(self.N))-1):
                 stride /= 2
                 for i in range(self.N - stride/2-1, -1, -stride):
                     if stride == 2:
                         if i == 0:
-                            d[i] = (d[i] - c1*d[i+stride/2])/b1
+                            d[offset+i] = (d[offset+i] - c1*d[offset+i+stride/2])/b1
                         else:
-                            d[i] = (d[i] - ai*d[i-stride/2] - 
-                                ci*d[i+stride/2])/bi
+                            d[offset+i] = (d[offset+i] - ai*d[offset+i-stride/2] - 
+                                ci*d[offset+i+stride/2])/bi
                     else:
                         idx = int(np.log2(stride)) - 2
                         if i == stride/2-1:
-                            d[i] = (d[i] -
-                              c[idx]*d[i+stride/2])/b_first[idx]
+                            d[offset+i] = (d[offset+i] -
+                              c[idx]*d[offset+i+stride/2])/b_first[idx]
                         else:
-                            d[i] = (d[i] - 
-                              a[idx]*d[i-stride/2] -
-                              c[idx]*d[i+stride/2])/b[idx]
+                            d[offset+i] = (d[offset+i] - 
+                              a[idx]*d[offset+i-stride/2] -
+                              c[idx]*d[offset+i+stride/2])/b[idx]
 
 def _precompute_coefficients(N, coeffs):
     '''
