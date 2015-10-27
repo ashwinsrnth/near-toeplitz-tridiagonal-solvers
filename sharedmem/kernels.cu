@@ -12,10 +12,8 @@ __global__ void sharedMemCyclicReduction( double *a_d,
                                 const double c1,
                                 const double ai,
                                 const double bi,
-                                const double ci,
-                                int nx,
-                                int ny,
-                                int nz) {
+                                const double ci)
+                                {
     /*
 
     */
@@ -27,8 +25,7 @@ __global__ void sharedMemCyclicReduction( double *a_d,
     int tix = threadIdx.x; 
     int i, m, n;
     int idx, stride;
-    int line_start = iz*(nx*ny) + iy*nx + 0;
-    double k1, k2;
+    int line_start = iz*(256*256) + iy*256 + 0;
     double d_m, d_n;
 
     /* When loading to shared memory, perform the first
@@ -39,7 +36,7 @@ __global__ void sharedMemCyclicReduction( double *a_d,
                     d_d[line_start+2*tix]*k1_first_d[idx] - \
                     d_d[line_start+2*tix+2]*k2_d[idx];
     }
-    else if (tix == (nx/2-1)) {
+    else if (tix == (128-1)) {
         d_l[tix] = d_d[line_start+2*tix+1] - \
                      d_d[line_start+2*tix]*k1_last_d[idx];
     }
@@ -54,19 +51,18 @@ __global__ void sharedMemCyclicReduction( double *a_d,
     
     /* Do the remaining forward reduction steps: */
     stride = 1;
-    for (int step=0; step<rint(log2((float) nx/4)); step++) {
-        stride = stride*2;
+    for (int stride=2; stride<128; stride=stride*2) {
         idx = idx + 1;
-        if (tix < nx/(2*stride)) {
-            i = (stride-1) + tix*stride;
+        i = (stride-1) + tix*stride;
+        if (tix < 256/(2*stride)) {
             if (tix == 0) {
                 d_l[i] = d_l[i] - \
-                            d_l[i-stride/2]*k1_first_d[idx] - \
-                            d_l[i+stride/2]*k2_d[idx];
+                            d_l[i - stride/2]*k1_first_d[idx] - \
+                            d_l[i + stride/2]*k2_d[idx];
             }
-            else if (i == (nx/2-1)) {
+            else if (i == (256/2-1)) {
                 d_l[i] = d_l[i] - \
-                             d_l[i-stride/2]*k1_last_d[idx];
+                             d_l[i - stride/2]*k1_last_d[idx];
             }
             else {
                 d_l[i] = d_l[i] - d_l[i-stride/2]*k1_d[idx] - \
@@ -77,30 +73,27 @@ __global__ void sharedMemCyclicReduction( double *a_d,
     }
 
     if (tix == 0) {
-        m = rint(log2((float) nx/2)) - 1;
-        n = rint(log2((float) nx/2));
+        m = rint(log2((float) 128)) - 1;
+        n = rint(log2((float) 128));
 
-        d_m = (d_l[nx/4-1]*b_d[n] - \
-               c_d[m]*d_l[nx/2-1])/ \
+        d_m = (d_l[256/4-1]*b_d[n] - \
+               c_d[m]*d_l[256/2-1])/ \
             (b_first_d[m]*b_d[n] - c_d[m]*a_d[n]);
 
-        d_n = (b_first_d[m]*d_l[nx/2-1] - \
-               d_l[nx/4-1]*a_d[n])/ \
+        d_n = (b_first_d[m]*d_l[256/2-1] - \
+               d_l[256/4-1]*a_d[n])/ \
             (b_first_d[m]*b_d[n] - c_d[m]*a_d[n]);
 
-        d_l[nx/4-1] = d_m;
-        d_l[nx/2-1] = d_n;
+        d_l[256/4-1] = d_m;
+        d_l[256/2-1] = d_n;
     }
     __syncthreads();
-
-    stride = nx/2;    
-     
-    idx = rint(log2((float) nx))-2;
-    for (int step=0; step<rint(log2((float) nx))-2; step++) {
-        stride = stride/2;
+    
+    idx = rint(log2((float) 256))-2;
+    for (int stride=256/4; stride>1; stride=stride/2) {
         idx = idx - 1;
-        if (tix < nx/(2*stride)){
-            i = (stride/2-1) + tix*stride;
+        i = (stride/2-1) + tix*stride;
+        if (tix < 256/(2*stride)){
             if (tix == 0) {
                 d_l[i] = (d_l[i] - c_d[idx]*d_l[i+stride/2])/\
                             b_first_d[idx];
@@ -112,7 +105,7 @@ __global__ void sharedMemCyclicReduction( double *a_d,
         }
         __syncthreads();
     }
-    
+
     //When writing from shared memory, perform the last
     //substitution step
     if (tix == 0) {
@@ -124,6 +117,6 @@ __global__ void sharedMemCyclicReduction( double *a_d,
         d_d[line_start+2*tix+1] = d_l[tix];
     } 
     
+
     __syncthreads();
 }
-
