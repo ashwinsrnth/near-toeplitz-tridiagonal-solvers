@@ -31,13 +31,14 @@ cfd = NearToeplitzSolver(nx, ny*nz, (1., 2., 1./4, 1., 1./4, 2., 1.))
 start = cuda.Event()
 end = cuda.Event()
 
-for i in range(1):
+for i in range(10):
     start.record()
     cfd.solve(d_d)
     end.record()
     end.synchronize()
     print start.time_till(end)*1e-3
 
+'''
 a = np.ones(nx, dtype=np.float64)*1./4
 b = np.ones(nx, dtype=np.float64)
 c = np.ones(nx, dtype=np.float64)*1./4
@@ -52,3 +53,4 @@ for i in range(nz):
     for j in range(ny):
         x_true = scipy_solve_banded(a, b, c, d[i, j, :])
         assert_allclose(x_true, x[i, j, :])
+'''
