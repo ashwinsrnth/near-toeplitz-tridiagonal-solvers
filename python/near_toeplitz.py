@@ -1,31 +1,31 @@
 import numpy as np
-np.random.seed(2359230)
+
 def solve_two_by_two(A, b):
     # solve the 2-by-2 system Ax=b
     x = 1./(A[0,0]*A[1,1] - A[0,1]*A[1,0])*np.asmatrix([[A[1,1], -A[0,1]],[-A[1,0], A[0,0]]])*np.asmatrix(b).transpose()
     return x[0], x[1]
 
 class NearToeplitzSolver:
-    def __init__(self, N, nrhs, coeffs):
+    def __init__(self, n, nrhs, coeffs):
         '''
         Solve several near Toeplitz tridiagonal systems.
 
-        :param N: size of each tridiagonal systems
-        :type N: int
+        :param n: size of each tridiagonal systems
+        :type n: int
         :param nrhs: number of rhs to solve for
         :type nrhs: int
         :param coeffs: coefficients (b1, c1, ai, bi ci, an, bn)
             that define the tridiagonal system
         :type coeffs: tuple
         '''
-        self.N = N
+        self.n = n
         self.nrhs = nrhs
         self.coeffs = coeffs
         (self.a, self.b, self.c, self.k1, self.k2,
             self.b_first,
             self.k1_first,
             self.k1_last) = _precompute_coefficients(
-            self.N, self.coeffs)
+            self.n, self.coeffs)
     
     def solve(self, d):
         '''
@@ -39,17 +39,17 @@ class NearToeplitzSolver:
         b1, c1, ai, bi, ci, an, bn = self.coeffs
 
         for irhs in range(self.nrhs):
-            offset = irhs*self.N
+            offset = irhs*self.n
             stride = 1
-            for step in np.arange(int(np.log2(self.N))-1):
+            for step in np.arange(int(np.log2(self.n))-1):
                 stride *= 2
                 idx = int(np.log2(stride)) - 1
-                for i in range(stride-1, self.N, stride):
+                for i in range(stride-1, self.n, stride):
                     if i == stride-1:
                         d[offset+i] = (d[offset+i] - 
                             d[offset+i-stride/2]*k1_first[idx] -
                             d[offset+i+stride/2]*k2[idx])
-                    elif i == self.N-1:
+                    elif i == self.n-1:
                         d[offset+i] = (d[offset+i] - 
                             d[offset+i-stride/2]*k1_last[idx])
                     else:
@@ -57,16 +57,16 @@ class NearToeplitzSolver:
                             d[offset+i-stride/2]*k1[idx] -
                             d[offset+i+stride/2]*k2[idx])
             stride *= 2
-            m = int(np.log2(stride/2)) - 1
-            n = int(np.log2(stride/2))
+            j = int(np.log2(stride/2)) - 1
+            k = int(np.log2(stride/2))
             d[offset+stride/2-1], d[offset+stride-1] = solve_two_by_two(
-                np.array([[b_first[m], c[m]],
-                          [a[n], b[n]]]),
+                np.array([[b_first[j], c[j]],
+                          [a[k], b[k]]]),
                 np.array([d[offset+stride/2-1], d[offset+stride-1]]))
 
-            for i in np.arange(int(np.log2(self.N))-1):
+            for i in np.arange(int(np.log2(self.n))-1):
                 stride /= 2
-                for i in range(self.N - stride/2-1, -1, -stride):
+                for i in range(self.n - stride/2-1, -1, -stride):
                     if stride == 2:
                         if i == 0:
                             d[offset+i] = (d[offset+i] - c1*d[offset+i+stride/2])/b1
