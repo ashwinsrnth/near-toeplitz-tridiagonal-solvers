@@ -1,5 +1,5 @@
 import numpy as np
-from near_toeplitz import *
+from neato import NearToeplitzSolver
 from scipy.linalg import solve_banded
 from numpy.testing import assert_allclose
 

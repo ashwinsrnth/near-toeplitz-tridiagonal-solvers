@@ -1,7 +1,7 @@
+from pycuda import autoinit
 import pycuda.gpuarray as gpuarray
 import pycuda.driver as cuda
 import numpy as np
-import kernels
 from neato import NearToeplitzSolver
 from scipy.linalg import solve_banded
 from numpy.testing import assert_allclose

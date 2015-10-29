@@ -1,32 +1,109 @@
 import pycuda.gpuarray as gpuarray
 import pycuda.driver as cuda
 import numpy as np
-import kernels
+import jinja2
+import pycuda.compiler as compiler
 
-'''
-A tridiagonal solver for solving
-the tridiagonal system that arises in the evaulation
-of derivatives using compact finite-difference schemes.
+kernel_template = '''
+__global__ void globalForwardReduction(const double *a_d,
+                                const double *b_d,
+                                const double *c_d,
+                                double *d_d,
+                                const double *k1_d,
+                                const double *k2_d,
+                                const double *b_first_d,
+                                const double *k1_first_d,
+                                const double *k1_last_d,
+                                const int n,
+                                int stride)
+{
+    int tix = threadIdx.x;
+    int offset = blockIdx.x*n;
+    int i;
+    int j, k;
+    int idx;
+    double x_j, x_k;
 
-For example, our solver handles the tridiagonal system
-for the following tridiagonal scheme:
+    // forward reduction
+    if (stride == n)
+    {
+        stride /= 2;
+        j = log2((float)stride) - 1;
+        k = log2((float)stride); // the last element
+        x_j = (d_d[offset+stride-1]*b_d[k] - c_d[j]*d_d[offset+2*stride-1])/ \
+                        (b_first_d[j]*b_d[k] - c_d[j]*a_d[k]);
 
-alpha(f'[i-1] - f'[i+1]) + f'[i] = a(f[i+1] - f[i-1])/dx
+        x_k = (b_first_d[j]*d_d[offset+2*stride-1] - d_d[offset+stride-1]*a_d[k])/ \
+                        (b_first_d[j]*b_d[k] - c_d[j]*a_d[k]);
+        d_d[offset+stride-1] = x_j;
+        d_d[offset+2*stride-1] = x_k;
+    }
+    else
+    {
+        i = (stride-1) + tix*stride;
+        idx = log2((float)stride) - 1;
+        if (tix == 0)
+        {
+            d_d[offset+i] = d_d[offset+i] - d_d[offset+i-stride/2]*k1_first_d[idx] - d_d[offset+i+stride/2]*k2_d[idx];
+        }
+        else if (i == (n-1))
+        {
+            d_d[offset+i] = d_d[offset+i] - d_d[offset+i-stride/2]*k1_last_d[idx];
+        }
+        else
+        {
+            d_d[offset+i] = d_d[offset+i] - d_d[offset+i-stride/2]*k1_d[idx] - d_d[offset+i+stride/2]*k2_d[idx];
+        }
+    }
+}
 
-With alpha=1/4, a=3/4
+__global__ void globalBackSubstitution(const double *a_d,
+                                    const double *b_d,
+                                    const double *c_d,
+                                    double *d_d,
+                                    const double *b_first_d,
+                                    const double b1,
+                                    const double c1,
+                                    const double ai,
+                                    const double bi,
+                                    const double ci,
+                                    const int n,
+                                    const int stride)
 
-Along with the following implicit equation at the boundaries:
+{
+    int tix = threadIdx.x;
+    int offset = blockIdx.x*n;
+    int i;
+    int idx;
 
-f'[1] + 2f'[2] =  (-5f[1] + 4f[2] + f[3])/2dx
+    i = (stride/2-1) + tix*stride;
 
-The tridiagonal system is then of the form:
+    if (stride == 2)
+    {
+        if (i == 0)
+        {
+            d_d[offset+i] = (d_d[offset+i] - c1*d_d[offset+i+1])/b1;
+        }
+        else
+        {
+            d_d[offset+i] = (d_d[offset+i] - (ai)*d_d[offset+i-1] - (ci)*d_d[offset+i+1])/bi;
+        }
+    }
+    else
+    {
+        // rint rounds to the nearest integer
+        idx = rint(log2((double)stride)) - 2;
+        if (tix == 0) 
+        {   
+            d_d[offset+i] = (d_d[offset+i] - c_d[idx]*d_d[offset+i+stride/2])/b_first_d[idx];
+        }
+        else
+        {
+            d_d[offset+i] = (d_d[offset+i] - a_d[idx]*d_d[offset+i-stride/2] - c_d[idx]*d_d[offset+i+stride/2])/b_d[idx];
+        }
+    }
+}
 
-1       2       .       .       .       .
-1/ 4    1       1/4     .       .       .
-.       1/4     1       1/4     .       .
-.       .       1/4     1       1/4     .
-.       .       .       1/4     1       1/4
-.       .       .       .       2       1
 '''
 
 class NearToeplitzSolver:
@@ -60,9 +137,14 @@ class NearToeplitzSolver:
         self.k1_first_d = gpuarray.to_gpu(k1_first)
         self.k1_last_d = gpuarray.to_gpu(k1_last)
         
-        self.forward_reduction, self.back_substitution = kernels.get_funcs('kernels.cu',
-                'globalForwardReduction', 'globalBackSubstitution')
-        
+        tpl = jinja2.Template(kernel_template)
+        rendered_kernel = tpl.render(n=self.n, shared_size=self.n/2)
+        module = compiler.SourceModule(rendered_kernel,
+                options=['-O2'])
+        self.forward_reduction = module.get_function(
+                'globalForwardReduction')
+        self.back_substitution = module.get_function(
+                'globalBackSubstitution')
         self.forward_reduction.prepare('PPPPPPPPPii')
         self.back_substitution.prepare('PPPPPdddddii')
 
