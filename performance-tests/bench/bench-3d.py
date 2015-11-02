@@ -1,5 +1,5 @@
 import sys
-sys.path.append('../sharedmem')
+sys.path.append('../../sharedmem')
 import neato
 from pycuda import autoinit
 import pycuda.gpuarray as gpuarray
