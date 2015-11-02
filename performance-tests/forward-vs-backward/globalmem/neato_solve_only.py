@@ -161,13 +161,11 @@ class NearToeplitzSolver:
         # CR algorithm
         # ============================================
                 
-        stride = 1
-        for i in np.arange(int(np.log2(self.n))-1):
-            stride *= 2
-            self.forward_reduction.prepared_call((self.nrhs, 1, 1), (self.n/stride, 1, 1),
-                self.a_d.gpudata, self.b_d.gpudata, self.c_d.gpudata, x_d.gpudata, self.k1_d.gpudata, self.k2_d.gpudata,
-                    self.b_first_d.gpudata, self.k1_first_d.gpudata, self.k1_last_d.gpudata,
-                            self.n, stride)
+        stride = self.n
+        self.forward_reduction.prepared_call((self.nrhs, 1, 1), (self.n/stride, 1, 1),
+            self.a_d.gpudata, self.b_d.gpudata, self.c_d.gpudata, x_d.gpudata, self.k1_d.gpudata, self.k2_d.gpudata,
+                self.b_first_d.gpudata, self.k1_first_d.gpudata, self.k1_last_d.gpudata,
+                        self.n, stride)
 
 
 def _precompute_coefficients(system_size, coeffs):

@@ -4,107 +4,53 @@ import numpy as np
 import jinja2
 import pycuda.compiler as compiler
 
-kernel_template = '''
-__global__ void globalForwardReduction(const double *a_d,
-                                const double *b_d,
-                                const double *c_d,
+kernel_template = """
+__global__ void sharedMemCyclicReduction( double *a_d,
+                                double *b_d,
+                                double *c_d,
                                 double *d_d,
-                                const double *k1_d,
-                                const double *k2_d,
-                                const double *b_first_d,
-                                const double *k1_first_d,
-                                const double *k1_last_d,
-                                const int n,
-                                int stride)
-{
-    int tix = threadIdx.x;
-    int offset = blockIdx.x*n;
-    int i;
-    int j, k;
+                                double *k1_d,
+                                double *k2_d,
+                                double *b_first_d,
+                                double *k1_first_d,
+                                double *k1_last_d,
+                                const double b1,
+                                const double c1,
+                                const double ai,
+                                const double bi,
+                                const double ci)
+                                {
+    __shared__ double d_l[{{shared_size | int}}];
+
+    int tix = threadIdx.x; 
+    int offset = blockIdx.x*{{n}};
+    int i, j, k;
     int idx;
-    double x_j, x_k;
+    double d_j, d_k;
+    
+    if (tix == 0) {
+        j = rint(log2((float) {{(n/2) | int}})) - 1;
+        k = rint(log2((float) {{(n/2) | int}}));
 
-    // forward reduction
-    if (stride == n)
-    {
-        stride /= 2;
-        j = log2((float)stride) - 1;
-        k = log2((float)stride); // the last element
-        x_j = (d_d[offset+stride-1]*b_d[k] - c_d[j]*d_d[offset+2*stride-1])/ \
-                        (b_first_d[j]*b_d[k] - c_d[j]*a_d[k]);
+        d_j = (d_l[{{n}}/4-1]*b_d[k] - \
+               c_d[j]*d_l[{{n}}/2-1])/ \
+            (b_first_d[j]*b_d[k] - c_d[j]*a_d[k]);
 
-        x_k = (b_first_d[j]*d_d[offset+2*stride-1] - d_d[offset+stride-1]*a_d[k])/ \
-                        (b_first_d[j]*b_d[k] - c_d[j]*a_d[k]);
-        d_d[offset+stride-1] = x_j;
-        d_d[offset+2*stride-1] = x_k;
+        d_k = (b_first_d[j]*d_l[{{n}}/2-1] - \
+               d_l[{{n}}/4-1]*a_d[k])/ \
+            (b_first_d[j]*b_d[k] - c_d[j]*a_d[k]);
+
+        d_l[{{n}}/4-1] = d_j;
+        d_l[{{n}}/2-1] = d_k;
     }
-    else
-    {
-        i = (stride-1) + tix*stride;
-        idx = log2((float)stride) - 1;
-        if (tix == 0)
-        {
-            d_d[offset+i] = d_d[offset+i] - d_d[offset+i-stride/2]*k1_first_d[idx] - d_d[offset+i+stride/2]*k2_d[idx];
-        }
-        else if (i == (n-1))
-        {
-            d_d[offset+i] = d_d[offset+i] - d_d[offset+i-stride/2]*k1_last_d[idx];
-        }
-        else
-        {
-            d_d[offset+i] = d_d[offset+i] - d_d[offset+i-stride/2]*k1_d[idx] - d_d[offset+i+stride/2]*k2_d[idx];
-        }
-    }
+    __syncthreads();
 }
 
-__global__ void globalBackSubstitution(const double *a_d,
-                                    const double *b_d,
-                                    const double *c_d,
-                                    double *d_d,
-                                    const double *b_first_d,
-                                    const double b1,
-                                    const double c1,
-                                    const double ai,
-                                    const double bi,
-                                    const double ci,
-                                    const int n,
-                                    const int stride)
 
-{
-    int tix = threadIdx.x;
-    int offset = blockIdx.x*n;
-    int i;
-    int idx;
 
-    i = (stride/2-1) + tix*stride;
+"""
 
-    if (stride == 2)
-    {
-        if (i == 0)
-        {
-            d_d[offset+i] = (d_d[offset+i] - c1*d_d[offset+i+1])/b1;
-        }
-        else
-        {
-            d_d[offset+i] = (d_d[offset+i] - (ai)*d_d[offset+i-1] - (ci)*d_d[offset+i+1])/bi;
-        }
-    }
-    else
-    {
-        // rint rounds to the nearest integer
-        idx = rint(log2((double)stride)) - 2;
-        if (tix == 0) 
-        {   
-            d_d[offset+i] = (d_d[offset+i] - c_d[idx]*d_d[offset+i+stride/2])/b_first_d[idx];
-        }
-        else
-        {
-            d_d[offset+i] = (d_d[offset+i] - a_d[idx]*d_d[offset+i-stride/2] - c_d[idx]*d_d[offset+i+stride/2])/b_d[idx];
-        }
-    }
-}
 
-'''
 
 class NearToeplitzSolver:
 
@@ -115,7 +61,7 @@ class NearToeplitzSolver:
         n: The size of the tridiagonal system.
         nrhs: The number of right hand sides
         coeffs: A list of coefficients that make up the tridiagonal matrix:
-            [b1, c1, ai, bi, ci, an, bn]
+            (b1, c1, ai, bi, ci, an, bn)
         '''
         self.n = n
         self.nrhs = nrhs
@@ -141,18 +87,16 @@ class NearToeplitzSolver:
         rendered_kernel = tpl.render(n=self.n, shared_size=self.n/2)
         module = compiler.SourceModule(rendered_kernel,
                 options=['-O2'])
-        self.forward_reduction = module.get_function(
-                'globalForwardReduction')
-        self.back_substitution = module.get_function(
-                'globalBackSubstitution')
-        self.forward_reduction.prepare('PPPPPPPPPii')
-        self.back_substitution.prepare('PPPPPdddddii')
-
+        self.cyclic_reduction = module.get_function(
+            'sharedMemCyclicReduction')
+        self.cyclic_reduction.prepare('PPPPPPPPPddddd')
+        
     def solve(self, x_d):
+
         '''
-        Solve the tridiagonal system
-        for rhs d, given storage for the solution
-        vector in x.
+            Solve the tridiagonal system
+            for rhs d, given storage for the solution
+            vector in x.
         '''
         [b1, c1,
             ai, bi, ci,
@@ -160,15 +104,23 @@ class NearToeplitzSolver:
 
         # CR algorithm
         # ============================================
-                
-        stride = 1
-        for i in np.arange(int(np.log2(self.n))-1):
-            stride *= 2
-            self.forward_reduction.prepared_call((self.nrhs, 1, 1), (self.n/stride, 1, 1),
-                self.a_d.gpudata, self.b_d.gpudata, self.c_d.gpudata, x_d.gpudata, self.k1_d.gpudata, self.k2_d.gpudata,
-                    self.b_first_d.gpudata, self.k1_first_d.gpudata, self.k1_last_d.gpudata,
-                            self.n, stride)
-
+        self.cyclic_reduction.prepared_call(
+                 (self.nrhs, 1, 1),
+                 (self.n/2, 1, 1),
+                 self.a_d.gpudata,
+                 self.b_d.gpudata,
+                 self.c_d.gpudata,
+                 x_d.gpudata,
+                 self.k1_d.gpudata,
+                 self.k2_d.gpudata,
+                 self.b_first_d.gpudata,
+                 self.k1_first_d.gpudata,
+                 self.k1_last_d.gpudata,
+                 b1,
+                 c1,
+                 ai,
+                 bi,
+                 ci)
 
 def _precompute_coefficients(system_size, coeffs):
     '''
@@ -246,4 +198,3 @@ def _precompute_coefficients(system_size, coeffs):
     b[-1] = b_last
 
     return a, b, c, k1, k2, b_first, k1_first, k1_last
-

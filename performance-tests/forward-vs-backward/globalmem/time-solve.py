@@ -3,19 +3,9 @@ from pycuda import autoinit
 import pycuda.gpuarray as gpuarray
 import pycuda.driver as cuda
 import numpy as np
+
+from neato_solve_only import NearToeplitzSolver
 from prettytable import PrettyTable
-
-mem = sys.argv[1]
-
-if mem == 'global':
-    sys.path.append('../../globalmem')
-elif mem == 'shared':
-    sys.path.append('../../sharedmem')
-else:
-    print 'Please specify global or shared solver'
-    raise(ValueError)
-
-from neato import NearToeplitzSolver
 
 sizes = (32, 64, 128, 256, 512)
 num_systems = (32**2, 64**2, 128**2, 256**2, 512**2)
