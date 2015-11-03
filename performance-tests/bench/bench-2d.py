@@ -10,7 +10,7 @@ from neato import NearToeplitzSolver
 from prettytable import PrettyTable
 
 sizes = (32, 64, 128, 256, 512, 1024, 2048)
-num_systems = (32**2, 64**2, 128**2, 256**2, 512**2, 1024**2, 2048**2)
+num_systems = (32, 64, 128, 256, 512, 1024, 2048)
 
 start = cuda.Event()
 end = cuda.Event()
