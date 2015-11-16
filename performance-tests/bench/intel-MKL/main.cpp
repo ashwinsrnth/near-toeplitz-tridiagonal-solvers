@@ -69,7 +69,7 @@ int main(int argc, char **argv)
 {
     srand((unsigned)time(NULL));
 
-    int N, nrhs; 
+    int N, nrhs, info; 
     double *a, *b, *c, *d, *d2, *x;
     float total_time;
     struct timeval start, end;
@@ -111,7 +111,7 @@ int main(int argc, char **argv)
         memcpy(d2, d, N*nrhs*sizeof(double)); 
         gettimeofday(&start, NULL);
 
-        LAPACKE_dgtsv(LAPACK_COL_MAJOR, N, nrhs, a+1, b, c, d, N);
+        ddtsvb(&N, &nrhs, a+1, b, c, d, &N, &info);
         gettimeofday(&end, NULL);
         total_time += (float)(((end.tv_sec * 1000000 + end.tv_usec)
                           - (start.tv_sec * 1000000 + start.tv_usec)))/1000000.0;
