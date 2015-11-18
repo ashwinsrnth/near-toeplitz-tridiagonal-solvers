@@ -22,12 +22,12 @@ def scipy_solve_banded(a, b, c, rhs):
     x = solve_banded(l_and_u, ab, rhs)
     return x
 
-nz = 256
-ny = 256
-nx = 256
+nz = 32
+ny = 32
+nx = 32
 d = np.random.rand(nz, ny, nx)
 d_d = gpuarray.to_gpu(d)
-solver = NearToeplitzSolver(nx, ny*nz, (1., 2., 1./4, 1., 1./4, 2., 1.))
+solver = NearToeplitzSolver(nx, ny*nz, (1., 2., 1./4, 1., 1./4, 2., 1.), use_shmem=True)
 solver.solve(d_d)
 x = d_d.get()
 
