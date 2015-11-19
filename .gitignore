@@ -6,3 +6,5 @@
 *.o
 07-templatedKernel/*kernels.cu
 *.nvprof
+.cache
+__pycache__

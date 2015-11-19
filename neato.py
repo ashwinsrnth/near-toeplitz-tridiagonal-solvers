@@ -1,7 +1,8 @@
-import pycuda.gpuarray as gpuarray
-import pycuda.driver as cuda
-import numpy as np
+import os
 import jinja2
+import numpy as np
+import pycuda.driver as cuda
+import pycuda.gpuarray as gpuarray
 import pycuda.compiler as compiler
 
 class NearToeplitzSolver:
@@ -37,28 +38,9 @@ class NearToeplitzSolver:
         self.k1_first_d = gpuarray.to_gpu(k1_first)
         self.k1_last_d = gpuarray.to_gpu(k1_last)
         
-        with open('_impls/globalmem.cu') as f:
-            kernel_template = f.read()
-        tpl = jinja2.Template(kernel_template)
-        rendered_kernel = tpl.render(n=self.n, shared_size=self.n/2)
-        module = compiler.SourceModule(rendered_kernel,
-                options=['-O2'])
-        self.forward_reduction = module.get_function(
-                'forwardReductionKernel')
-        self.back_substitution = module.get_function(
-                'backwardSubstitutionKernel')
-        self.forward_reduction.prepare('PPPPPPPPPii')
-        self.back_substitution.prepare('PPPPPdddddii')
-
-        with open('_impls/sharedmem.jinja2') as f:
-            kernel_template = f.read()
-        tpl = jinja2.Template(kernel_template)
-        rendered_kernel = tpl.render(n=self.n, shared_size=self.n/2)
-        module = compiler.SourceModule(rendered_kernel,
-                options=['-O2'])
-        self.cyclic_reduction = module.get_function(
-            'cyclicReductionKernel')
-        self.cyclic_reduction.prepare('PPPPPPPPPddddd')
+        # get kernels:
+        self.forward_reduction, self.backward_substitution = self._get_globalmem_kernels()
+        self.shmem_cyclic_reduction = self._get_sharedmem_kernels()
 
     def solve(self, x_d):
         '''
@@ -74,7 +56,7 @@ class NearToeplitzSolver:
         # ============================================
         
         if self.use_shmem:
-            self.cyclic_reduction.prepared_call(
+            self.shmem_cyclic_reduction.prepared_call(
                      (self.nrhs, 1, 1),
                      (self.n/2, 1, 1),
                      self.a_d.gpudata,
@@ -106,7 +88,7 @@ class NearToeplitzSolver:
             # `stride` is now equal to `n`
             for i in np.arange(int(np.log2(self.n))-1):
                 stride /= 2
-                self.back_substitution.prepared_call(
+                self.backward_substitution.prepared_call(
                     (self.nrhs, 1, 1), (self.n/stride, 1, 1),
                     self.a_d.gpudata,
                     self.b_d.gpudata,
@@ -115,6 +97,35 @@ class NearToeplitzSolver:
                     self.b_first_d.gpudata,
                     b1, c1, ai, bi, ci,
                     self.n, stride)
+    
+    def _get_globalmem_kernels(self):
+        dir = os.path.dirname(os.path.realpath(__file__))
+        with open(dir+'/_impls/globalmem.cu') as f:
+            kernel_template = f.read()
+        tpl = jinja2.Template(kernel_template)
+        rendered_kernel = tpl.render(n=self.n, shared_size=self.n/2)
+        module = compiler.SourceModule(rendered_kernel,
+                options=['-O2'])
+        forward_reduction = module.get_function(
+                'forwardReductionKernel')
+        backward_substitution = module.get_function(
+                'backwardSubstitutionKernel')
+        forward_reduction.prepare('PPPPPPPPPii')
+        backward_substitution.prepare('PPPPPdddddii')
+        return forward_reduction, backward_substitution
+
+    def _get_sharedmem_kernels(self):
+        dir = os.path.dirname(os.path.realpath(__file__))
+        with open(dir+'/_impls/sharedmem.jinja2') as f:
+            kernel_template = f.read()
+        tpl = jinja2.Template(kernel_template)
+        rendered_kernel = tpl.render(n=self.n, shared_size=self.n/2)
+        module = compiler.SourceModule(rendered_kernel,
+                options=['-O2'])
+        shmem_cyclic_reduction = module.get_function(
+            'cyclicReductionKernel')
+        shmem_cyclic_reduction.prepare('PPPPPPPPPddddd')
+        return shmem_cyclic_reduction
 
 def _precompute_coefficients(system_size, coeffs):
     '''
