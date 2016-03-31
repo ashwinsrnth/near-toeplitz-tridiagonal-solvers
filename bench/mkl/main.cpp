@@ -110,8 +110,8 @@ int main(int argc, char **argv)
         // d will be destroyed, so let's keep a copy of it 
         memcpy(d2, d, N*nrhs*sizeof(double)); 
         gettimeofday(&start, NULL);
-
-        ddtsvb(&N, &nrhs, a+1, b, c, d, &N, &info);
+        LAPACKE_dgtsv(LAPACK_COL_MAJOR, N, nrhs, a+1, b, c, d, N);
+        //ddtsvb(&N, &nrhs, a+1, b, c, d, &N, &info);
         gettimeofday(&end, NULL);
         total_time += (float)(((end.tv_sec * 1000000 + end.tv_usec)
                           - (start.tv_sec * 1000000 + start.tv_usec)))/1000000.0;
