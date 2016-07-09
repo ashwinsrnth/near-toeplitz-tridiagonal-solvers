@@ -1,21 +1,3 @@
-/*
-This script sets up and solves
-a "strided batch system", i.e.,
-several tridiagonal systems of the following form:
-
-Ay(i) = r(i)
-
-Where A is a tridiagonal coefficient matrix,
-and y(i), r(i) are the solution and RHS respectively.
-
-Command-line arguments:
-N - Length of tridiagonal systems
-nrhs - Number of systems to solve
-
-Outputs:
-Time in seconds to solve the problem on GPU 
-*/
-
 // includes, system
 #include <stdlib.h>
 #include <stdio.h>
