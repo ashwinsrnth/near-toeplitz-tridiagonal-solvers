@@ -58,7 +58,7 @@ class NearToeplitzSolver:
         if self.use_shmem:
             self.shmem_cyclic_reduction.prepared_call(
                      (self.nrhs, 1, 1),
-                     (self.n/2, 1, 1),
+                     (self.n//2, 1, 1),
                      self.a_d.gpudata,
                      self.b_d.gpudata,
                      self.c_d.gpudata,
@@ -75,7 +75,7 @@ class NearToeplitzSolver:
             for i in np.arange(int(np.log2(self.n))):
                 stride *= 2
                 self.forward_reduction.prepared_call(
-                    (self.nrhs, 1, 1), (self.n/stride, 1, 1),
+                    (self.nrhs, 1, 1), (self.n//stride, 1, 1),
                     self.a_d.gpudata,
                     self.b_d.gpudata,
                     self.c_d.gpudata,
@@ -87,9 +87,9 @@ class NearToeplitzSolver:
 
             # `stride` is now equal to `n`
             for i in np.arange(int(np.log2(self.n))-1):
-                stride /= 2
+                stride //= 2
                 self.backward_substitution.prepared_call(
-                    (self.nrhs, 1, 1), (self.n/stride, 1, 1),
+                    (self.nrhs, 1, 1), (self.n//stride, 1, 1),
                     self.a_d.gpudata,
                     self.b_d.gpudata,
                     self.c_d.gpudata,
