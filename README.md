@@ -1,1 +1,1 @@
-Several solvers for Near-Toeplitz tridiagonal systems
+NEATO: A tridiagonal solver for near-Toeplitz tridiagonal systems.
