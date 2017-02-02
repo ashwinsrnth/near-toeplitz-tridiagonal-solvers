@@ -123,8 +123,77 @@ class NearToeplitzSolver:
         module = compiler.SourceModule(rendered_kernel,
                 options=['-O2'])
         shmem_cyclic_reduction = module.get_function(
-            'cyclicReductionKernel')
+            'nearToeplitzCyclicReductionKernel')
         shmem_cyclic_reduction.prepare('PPPPPPPPPddddd')
+        return shmem_cyclic_reduction
+
+class ToeplitzSolver:
+
+    def __init__(self, n, nrhs, coeffs, use_shmem=False):
+        '''
+        Parameters
+        ----------
+        n: The size of the tridiagonal system.
+        nrhs: The number of right hand sides
+        coeffs: A list of coefficients that make up the tridiagonal matrix:
+            [b1, c1, ai, bi, ci, an, bn]
+        use_shmem: Use shared memory
+        '''
+        self.n = n
+        self.nrhs = nrhs
+        self.coeffs = coeffs
+        self.use_shmem = use_shmem
+
+        # check that system_size is a power of 2:
+        assert np.int(np.log2(self.n)) == np.log2(self.n)
+
+        # compute coefficients a, b, etc.,
+        ai, bi, ci = self.coeffs
+        a, b, c, k1, k2, _, _, _ = _precompute_coefficients(self.n, [bi, ci, ai, bi, ci, ai, bi])
+
+        # copy coefficients to buffers:
+        self.a_d = gpuarray.to_gpu(a)
+        self.b_d = gpuarray.to_gpu(b)
+        self.c_d = gpuarray.to_gpu(c)
+        self.k1_d = gpuarray.to_gpu(k1)
+        self.k2_d = gpuarray.to_gpu(k2)
+        
+        # get kernels:
+        self.shmem_cyclic_reduction = self._get_sharedmem_kernels()
+
+    def solve(self, x_d):
+        '''
+        Solve the tridiagonal system
+        for rhs d, given storage for the solution
+        vector in x.
+        '''
+        ai, bi, ci = self.coeffs
+
+        # CR algorithm
+        # ============================================
+        self.shmem_cyclic_reduction.prepared_call(
+                 (self.nrhs, 1, 1),
+                 (self.n//2, 1, 1),
+                 self.a_d.gpudata,
+                 self.b_d.gpudata,
+                 self.c_d.gpudata,
+                 x_d.gpudata,
+                 self.k1_d.gpudata,
+                 self.k2_d.gpudata,
+                 ai, bi, ci
+                 )
+
+    def _get_sharedmem_kernels(self):
+        dir = os.path.dirname(os.path.realpath(__file__))
+        with open(dir+'/_impls/sharedmem.jinja2') as f:
+            kernel_template = f.read()
+        tpl = jinja2.Template(kernel_template)
+        rendered_kernel = tpl.render(n=self.n, shared_size=self.n/2)
+        module = compiler.SourceModule(rendered_kernel,
+                options=['-O2'])
+        shmem_cyclic_reduction = module.get_function(
+            'toeplitzCyclicReductionKernel')
+        shmem_cyclic_reduction.prepare('PPPPPPddd')
         return shmem_cyclic_reduction
 
 def _precompute_coefficients(system_size, coeffs):

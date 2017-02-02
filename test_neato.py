@@ -1,8 +1,9 @@
 from pycuda import autoinit
 import pycuda.gpuarray as gpuarray
+import pycuda.gpuarray as gpuarray
 import pycuda.driver as cuda
 import numpy as np
-from neato import NearToeplitzSolver
+from neato import NearToeplitzSolver, ToeplitzSolver
 from scipy.linalg import solve_banded
 from numpy.testing import assert_allclose
 import pytest
@@ -23,7 +24,7 @@ def scipy_solve_banded(a, b, c, rhs):
     x = solve_banded(l_and_u, ab, rhs)
     return x
 
-def solve_toeplitz(coeffs, rhs):
+def solve_near_toeplitz(coeffs, rhs):
     n = rhs.size
     a = np.ones(n, dtype=np.float64)*coeffs[2]
     b = np.ones(n, dtype=np.float64)*coeffs[3]
@@ -37,8 +38,18 @@ def solve_toeplitz(coeffs, rhs):
     x = scipy_solve_banded(a, b, c, rhs)
     return x
 
+def solve_toeplitz(coeffs, rhs):
+    n = rhs.size
+    a = np.ones(n, dtype=np.float64)*coeffs[0]
+    b = np.ones(n, dtype=np.float64)*coeffs[1]
+    c = np.ones(n, dtype=np.float64)*coeffs[2]
+    a[0] = 0.
+    c[-1] = 0.
+    x = scipy_solve_banded(a, b, c, rhs)
+    return x
+
 @pytest.mark.parametrize("shmem", [True, False])
-def test_single_system(shmem):
+def test_single_near_toeplitz_system(shmem):
     n = 32
     d = np.random.rand(n)
     d_d = gpuarray.to_gpu(d)
@@ -46,11 +57,11 @@ def test_single_system(shmem):
     solver = NearToeplitzSolver(n, 1, coeffs, use_shmem=shmem)
     solver.solve(d_d)
     x = d_d.get()
-    x_true = solve_toeplitz(coeffs, d)
+    x_true = solve_near_toeplitz(coeffs, d)
     assert_allclose(x_true, x)
 
 @pytest.mark.parametrize("shmem", [True, False])
-def test_many_sytems(shmem):
+def test_many_near_toeplitz_sytems(shmem):
     n = 32
     nrhs = 16
     d = np.random.rand(nrhs, n)
@@ -61,7 +72,17 @@ def test_many_sytems(shmem):
     x = d_d.get()
 
     for i in range(nrhs):
-        x_true = solve_toeplitz(coeffs, d[i, :])
+        x_true = solve_near_toeplitz(coeffs, d[i, :])
         assert_allclose(x_true, x[i, :])
 
+def test_single_toeplitz_system(shmem=True):
+    n = 32
+    d = np.random.rand(n)
+    d_d = gpuarray.to_gpu(d)
+    coeffs = np.random.rand(3)
+    solver = ToeplitzSolver(n, 1, coeffs, use_shmem=shmem)
+    solver.solve(d_d)
+    x = d_d.get()
+    x_true = solve_toeplitz(coeffs, d)
+    assert_allclose(x_true, x)
 
