@@ -142,12 +142,7 @@ __global__ void toeplitzCyclicReductionKernel( double *a_d,
     /* When loading to shared memory, perform the first
        reduction step */
     idx = 0;
-    if (tix == 0) {
-        d_l[tix] = d_d[offset+2*tix+1] - \
-                    d_d[offset+2*tix]*k1_d[idx] - \
-                    d_d[offset+2*tix+2]*k2_d[idx];
-    }
-    else if (tix == ({{(n/2) | int}}-1)) {
+    if (tix == ({{(n/2) | int}}-1)) {
         d_l[tix] = d_d[offset+2*tix+1] - \
                     d_d[offset+2*tix]*k1_d[idx];
     }
@@ -166,12 +161,7 @@ __global__ void toeplitzCyclicReductionKernel( double *a_d,
         idx = idx + 1;
         i = (stride-1) + tix*stride;
         if (tix < {{n}}/(2*stride)) {
-            if (tix == 0) {
-                d_l[i] = d_l[i] - \
-                            d_l[i-stride/2]*k1_d[idx] - \
-                            d_l[i+stride/2]*k2_d[idx];
-            }
-            else if (i == ({{n}}/2-1)) {
+            if (i == ({{n}}/2-1)) {
                 d_l[i] = d_l[i] - \
                              d_l[i-stride/2]*k1_d[idx];
             }
