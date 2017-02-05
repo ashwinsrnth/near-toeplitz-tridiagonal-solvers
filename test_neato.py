@@ -86,3 +86,16 @@ def test_single_toeplitz_system(shmem=True):
     x_true = solve_toeplitz(coeffs, d)
     assert_allclose(x_true, x)
 
+def test_many_toeplitz_systems(shmem=True):
+    n = 32
+    nrhs = 16
+    d = np.random.rand(nrhs, n)
+    d_d = gpuarray.to_gpu(d)
+    coeffs = np.random.rand(3)
+    solver = ToeplitzSolver(n, nrhs, coeffs, use_shmem=shmem)
+    solver.solve(d_d)
+    x = d_d.get()
+
+    for i in range(nrhs):
+        x_true = solve_toeplitz(coeffs, d[i, :])
+        assert_allclose(x_true, x[i, :])
