@@ -3,7 +3,7 @@ import pycuda.gpuarray as gpuarray
 import pycuda.gpuarray as gpuarray
 import pycuda.driver as cuda
 import numpy as np
-from neato import NearToeplitzSolver, ToeplitzSolver
+from neato import NearToeplitzSolver, ToeplitzSolver, NearToeplitzBoundaryCorrectedSolver
 from scipy.linalg import solve_banded
 from numpy.testing import assert_allclose
 import pytest
@@ -99,3 +99,15 @@ def test_many_toeplitz_systems(shmem=True):
     for i in range(nrhs):
         x_true = solve_toeplitz(coeffs, d[i, :])
         assert_allclose(x_true, x[i, :])
+
+def test_solve_inner_systems():
+    n = 34
+    d = np.random.rand(n)
+    d_d = gpuarray.to_gpu(d)
+    coeffs = np.random.rand(3)
+    solver = NearToeplitzBoundaryCorrectedSolver(n, 1, coeffs)
+    solver._solve_inner_toeplitz_systems(d_d)
+    x = d_d.get()
+    x_true = np.zeros_like(x)*0.0
+    x_true[1:-1] = solve_toeplitz(coeffs, d[1:-1])
+    assert_allclose(x_true[1:-1], x[1:-1])
