@@ -104,10 +104,12 @@ def test_solve_inner_systems():
     n = 34
     d = np.random.rand(n)
     d_d = gpuarray.to_gpu(d)
-    coeffs = np.random.rand(3)
+    coeffs = np.random.rand(7)
     solver = NearToeplitzBoundaryCorrectedSolver(n, 1, coeffs)
     solver._solve_inner_toeplitz_systems(d_d)
     x = d_d.get()
     x_true = np.zeros_like(x)*0.0
-    x_true[1:-1] = solve_toeplitz(coeffs, d[1:-1])
-    assert_allclose(x_true[1:-1], x[1:-1])
+    x_true[1:-1] = solve_toeplitz(coeffs[2:5], d[1:-1])
+    x_true[0] = -d[0]/coeffs[0]
+    x_true[-1] = -d[-1]/coeffs[-1]
+    assert_allclose(x_true, x)

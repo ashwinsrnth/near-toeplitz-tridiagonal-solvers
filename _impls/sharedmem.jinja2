@@ -228,9 +228,11 @@ __global__ void innerToeplitzCyclicReductionKernel( double *a_d,
                                 double *d_d,
                                 double *k1_d,
                                 double *k2_d,
+                                const double b1,                           
                                 const double ai,
                                 const double bi,
-                                const double ci)
+                                const double ci,
+                                const double bn)
                                 {
     /*
 
@@ -249,6 +251,7 @@ __global__ void innerToeplitzCyclicReductionKernel( double *a_d,
     if (tix == ({{(n/2) | int}}-1)) {
         d_l[tix] = d_d[offset+2*tix+1] - \
                     d_d[offset+2*tix]*k1_d[idx];
+        d_d[offset+{{n}}] = -d_d[offset+{{n}}]/bn;
     }
     else {
         d_l[tix] = d_d[offset+2*tix+1] - \
@@ -316,6 +319,7 @@ __global__ void innerToeplitzCyclicReductionKernel( double *a_d,
     if (tix == 0) {
         d_d[offset+2*tix] = (d_d[offset+2*tix] - ci*d_l[tix])/bi;
         d_d[offset+2*tix+1] = d_l[tix];
+        d_d[offset-1] = -d_d[offset-1]/b1;
     }
     else {
         d_d[offset+2*tix] = (d_d[offset+2*tix] - \

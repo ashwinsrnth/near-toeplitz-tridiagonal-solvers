@@ -147,7 +147,7 @@ class NearToeplitzBoundaryCorrectedSolver:
         assert np.int(np.log2(self.n - 2)) == np.log2(self.n - 2)
 
         # compute coefficients a, b, etc.,
-        ai, bi, ci = self.coeffs
+        b1, c1, ai, bi, ci, an, bn = self.coeffs
         a, b, c, k1, k2, _, _, _ = _precompute_coefficients(self.n-2, [bi, ci, ai, bi, ci, ai, bi])
 
         # copy coefficients to buffers:
@@ -166,7 +166,7 @@ class NearToeplitzBoundaryCorrectedSolver:
         for rhs d, given storage for the solution
         vector in x.
         '''
-        ai, bi, ci = self.coeffs
+        b1, c1, ai, bi, ci, an, bn = self.coeffs
 
         # CR algorithm
         # ============================================
@@ -179,7 +179,7 @@ class NearToeplitzBoundaryCorrectedSolver:
                  x_d.gpudata,
                  self.k1_d.gpudata,
                  self.k2_d.gpudata,
-                 ai, bi, ci
+                 b1, ai, bi, ci, bn
                  )
 
     def _get_sharedmem_kernels(self):
@@ -192,7 +192,7 @@ class NearToeplitzBoundaryCorrectedSolver:
                 options=['-O2'])
         shmem_cyclic_reduction_inner = module.get_function(
             'innerToeplitzCyclicReductionKernel')
-        shmem_cyclic_reduction_inner.prepare('PPPPPPddd')
+        shmem_cyclic_reduction_inner.prepare('PPPPPPddddd')
         return shmem_cyclic_reduction_inner
 
 class ToeplitzSolver:
