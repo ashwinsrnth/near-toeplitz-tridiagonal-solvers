@@ -191,11 +191,10 @@ class NearToeplitzBoundaryCorrectedSolver:
                  b1, ai, bi, ci, bn
                  )
 
-
     def _apply_boundary_correction(self, x_d):
         self.boundary_correction.prepared_call(
                 (self.nrhs, 1, 1),
-                (1, 1, 1),
+                (self.n, 1, 1),
                 x_d.gpudata,
                 self.x_UH_i_d.gpudata,
                 self.x_LH_i_d.gpudata,
@@ -231,10 +230,7 @@ class NearToeplitzBoundaryCorrectedSolver:
         # upper homogeneous solution for middle
         rhs_UH_i = np.zeros(N)*0.0
         rhs_UH_i[0] = -self.coeffs[2]
-        print(rhs_UH_i)
-        print([self.coeffs[2], self.coeffs[3], self.coeffs[4]])
         x_UH_i = _solve_toeplitz_system([self.coeffs[2], self.coeffs[3], self.coeffs[4]], rhs_UH_i)
-        print(x_UH_i)
 
         # lower homogeneous solution for middle
         rhs_LH_i = np.zeros(N)*0.0

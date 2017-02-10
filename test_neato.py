@@ -1,6 +1,5 @@
 from pycuda import autoinit
 import pycuda.gpuarray as gpuarray
-import pycuda.gpuarray as gpuarray
 import pycuda.driver as cuda
 import numpy as np
 from neato import NearToeplitzSolver, ToeplitzSolver, NearToeplitzBoundaryCorrectedSolver
@@ -126,11 +125,11 @@ def test_boundary_correction_single_system():
     assert_allclose(x_true, x)
 
 def test_boundary_correction_single_system():
-    n = 34
-    nrhs = 32
+    n = 514
+    nrhs = 512
     d = np.random.rand(nrhs, n)
     d_d = gpuarray.to_gpu(d)
-    coeffs = np.array([-1, 1, 1, 2, 1, 1, -1.], dtype=np.float64)
+    coeffs = np.random.rand(7)
     solver = NearToeplitzBoundaryCorrectedSolver(n, nrhs, coeffs)
     solver.solve(d_d)
     x = d_d.get()

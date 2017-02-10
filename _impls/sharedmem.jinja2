@@ -345,38 +345,44 @@ __global__ void boundaryCorrectionKernel(
                                 const double x_UH_N) {
 
     int tix = blockIdx.x*blockDim.x + threadIdx.x;
-    int start = tix*({{n}}+2);
     double bmac;
 
-    /* each thread makes its reduced system */
-    double *d_reduced_d = new double[4];
+    /* first thread of the block makes and solves the block's reduced system */
+    __shared__ double d_reduced_d[4];
 
-    d_reduced_d[0] = -d_d[start+0];
-    d_reduced_d[1] = -d_d[start+1];
-    d_reduced_d[2] = -d_d[start+({{n}})];
-    d_reduced_d[3] = -d_d[start+({{n}}+1)];
+    if (threadIdx.x == 0) {
+        d_reduced_d[0] = -d_d[tix];
+        d_reduced_d[1] = -d_d[tix+1];
+        d_reduced_d[2] = -d_d[tix+({{n}})];
+        d_reduced_d[3] = -d_d[tix+({{n}}+1)];
 
-    /* each thread solves its reduced system */
-    c2_reduced_d[0] = c_reduced_d[0]/b_reduced_d[0];
-    d_reduced_d[0] = d_reduced_d[0]/b_reduced_d[0];
+        /* each thread solves its reduced system */
+        c2_reduced_d[0] = c_reduced_d[0]/b_reduced_d[0];
+        d_reduced_d[0] = d_reduced_d[0]/b_reduced_d[0];
 
-    for (int i=1; i<4; i++)
-    {
-        bmac = b_reduced_d[i] - a_reduced_d[i]*c2_reduced_d[i-1];
-        c2_reduced_d[i] = c_reduced_d[i]/bmac;
-        d_reduced_d[i] = (d_reduced_d[i] - a_reduced_d[i]*d_reduced_d[i-1])/bmac;
+        for (int i=1; i<4; i++)
+        {
+            bmac = b_reduced_d[i] - a_reduced_d[i]*c2_reduced_d[i-1];
+            c2_reduced_d[i] = c_reduced_d[i]/bmac;
+            d_reduced_d[i] = (d_reduced_d[i] - a_reduced_d[i]*d_reduced_d[i-1])/bmac;
+        }
+
+        for (int i=2; i >= 0; i--)
+        {
+            d_reduced_d[i] = d_reduced_d[i] - c2_reduced_d[i]*d_reduced_d[i+1];
+        }
     }
 
-    for (int i=2; i >= 0; i--)
-    {
-        d_reduced_d[i] = d_reduced_d[i] - c2_reduced_d[i]*d_reduced_d[i+1];
-    }
+    __syncthreads();
 
     /* with the reduced solution, each thread computes the true solution */
-    d_d[start+0] = d_d[start+0] + x_LH_1*d_reduced_d[0];
-    for (int i=1; i<({{n}}+1); i++) {
-        d_d[start+i] = d_d[start+i] + x_UH_i_d[i-1]*d_reduced_d[1] + x_LH_i_d[i-1]*d_reduced_d[2];
+    if (threadIdx.x == 0) {
+        d_d[tix] = d_d[tix] + x_LH_1*d_reduced_d[0];
     }
-    d_d[start+{{n}}+1] = d_d[start+{{n}}+1] + x_UH_N*d_reduced_d[3];
+    else if (threadIdx.x == ({{n}}+1)) {
+        d_d[tix] = d_d[tix] + x_UH_N*d_reduced_d[3];
+    }
+    else {
+        d_d[tix] = d_d[tix] + x_UH_i_d[threadIdx.x-1]*d_reduced_d[1] + x_LH_i_d[threadIdx.x-1]*d_reduced_d[2];
+    }
 }
-
