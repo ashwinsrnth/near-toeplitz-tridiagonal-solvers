@@ -4,6 +4,8 @@ import numpy as np
 import pycuda.driver as cuda
 import pycuda.gpuarray as gpuarray
 import pycuda.compiler as compiler
+import scipy.sparse as sparse
+import scipy.sparse.linalg as sparse_la
 
 class NearToeplitzSolver:
 
@@ -158,8 +160,15 @@ class NearToeplitzBoundaryCorrectedSolver:
         self.k2_d = gpuarray.to_gpu(k2)
 
         # get kernels:
-        self.shmem_cyclic_reduction_inner = self._get_sharedmem_kernels()
+        self.shmem_cyclic_reduction_inner, self.boundary_correction = self._get_sharedmem_kernels()
+
+        # prepare boundary correction:
+        self._prepare_boundary_correction()
         
+    def solve(self, x_d):
+        self._solve_inner_toeplitz_systems(x_d)
+        self._apply_boundary_correction(x_d)
+
     def _solve_inner_toeplitz_systems(self, x_d):
         '''
         Solve the inner toeplitz systems system
@@ -182,6 +191,21 @@ class NearToeplitzBoundaryCorrectedSolver:
                  b1, ai, bi, ci, bn
                  )
 
+
+    def _apply_boundary_correction(self, x_d):
+        self.boundary_correction.prepared_call(
+                (self.nrhs, 1, 1),
+                (1, 1, 1),
+                x_d.gpudata,
+                self.x_UH_i_d.gpudata,
+                self.x_LH_i_d.gpudata,
+                self.a_reduced_d.gpudata,
+                self.b_reduced_d.gpudata,
+                self.c_reduced_d.gpudata,
+                self.c2_reduced_d.gpudata,
+                self.x_LH_1,
+                self.x_UH_N)
+
     def _get_sharedmem_kernels(self):
         dir = os.path.dirname(os.path.realpath(__file__))
         with open(dir+'/_impls/sharedmem.jinja2') as f:
@@ -190,10 +214,50 @@ class NearToeplitzBoundaryCorrectedSolver:
         rendered_kernel = tpl.render(n=(self.n-2), shared_size=(self.n-1)/2)
         module = compiler.SourceModule(rendered_kernel,
                 options=['-O2'])
+
         shmem_cyclic_reduction_inner = module.get_function(
             'innerToeplitzCyclicReductionKernel')
         shmem_cyclic_reduction_inner.prepare('PPPPPPddddd')
-        return shmem_cyclic_reduction_inner
+
+        boundary_correction = module.get_function(
+            'boundaryCorrectionKernel')
+        boundary_correction.prepare('PPPPPPPdd')
+
+        return shmem_cyclic_reduction_inner, boundary_correction
+
+    def _prepare_boundary_correction(self):
+        N = self.n - 2
+        
+        # upper homogeneous solution for middle
+        rhs_UH_i = np.zeros(N)*0.0
+        rhs_UH_i[0] = -self.coeffs[2]
+        print(rhs_UH_i)
+        print([self.coeffs[2], self.coeffs[3], self.coeffs[4]])
+        x_UH_i = _solve_toeplitz_system([self.coeffs[2], self.coeffs[3], self.coeffs[4]], rhs_UH_i)
+        print(x_UH_i)
+
+        # lower homogeneous solution for middle
+        rhs_LH_i = np.zeros(N)*0.0
+        rhs_LH_i[-1] = -self.coeffs[4]
+        x_LH_i = _solve_toeplitz_system([self.coeffs[2], self.coeffs[3], self.coeffs[4]], rhs_LH_i)
+
+        # lower and upper homogeneous solution for top and bottom
+        self.x_LH_1 = -self.coeffs[1]/self.coeffs[0]
+        self.x_UH_N = -self.coeffs[-2]/self.coeffs[-1]
+
+        # form the reduced system LHS: 
+        a_reduced = np.array([0, -1, x_UH_i[-1], -1.])
+        b_reduced = np.array([self.x_LH_1, x_UH_i[0], x_LH_i[-1], self.x_UH_N])
+        c_reduced = np.array([-1, x_LH_i[0], -1, 0.])
+
+        # copy everything to GPU:
+        self.x_UH_i_d = gpuarray.to_gpu(x_UH_i)
+        self.x_LH_i_d = gpuarray.to_gpu(x_LH_i)
+        self.a_reduced_d = gpuarray.to_gpu(a_reduced)
+        self.b_reduced_d = gpuarray.to_gpu(b_reduced)
+        self.c_reduced_d = gpuarray.to_gpu(c_reduced)
+        self.c2_reduced_d = gpuarray.to_gpu(c_reduced)
+
 
 class ToeplitzSolver:
 
@@ -341,3 +405,9 @@ def _precompute_coefficients(system_size, coeffs):
 
     return a, b, c, k1, k2, b_first, k1_first, k1_last
 
+
+def _solve_toeplitz_system(coeffs, rhs):
+    N = rhs.size
+    M = sparse.diags((np.ones(N-1)*coeffs[0], np.ones(N)*coeffs[1], np.ones(N-1)*coeffs[2]),
+                offsets=[-1, 0, +1])
+    return sparse_la.spsolve(M, rhs)

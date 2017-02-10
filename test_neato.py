@@ -110,6 +110,31 @@ def test_solve_inner_systems():
     x = d_d.get()
     x_true = np.zeros_like(x)*0.0
     x_true[1:-1] = solve_toeplitz(coeffs[2:5], d[1:-1])
-    x_true[0] = -d[0]/coeffs[0]
-    x_true[-1] = -d[-1]/coeffs[-1]
+    x_true[0] = d[0]/coeffs[0]
+    x_true[-1] = d[-1]/coeffs[-1]
     assert_allclose(x_true, x)
+
+def test_boundary_correction_single_system():
+    n = 34
+    d = n.random.rand(n)
+    d_d = gpuarray.to_gpu(d)
+    coeffs = np.array([-1, 1, 1, 2, 1, 1, -1.], dtype=np.float64)
+    solver = NearToeplitzBoundaryCorrectedSolver(n, 1, coeffs)
+    solver.solve(d_d)
+    x = d_d.get()
+    x_true = solve_near_toeplitz(coeffs, d)
+    assert_allclose(x_true, x)
+
+def test_boundary_correction_single_system():
+    n = 34
+    nrhs = 32
+    d = np.random.rand(nrhs, n)
+    d_d = gpuarray.to_gpu(d)
+    coeffs = np.array([-1, 1, 1, 2, 1, 1, -1.], dtype=np.float64)
+    solver = NearToeplitzBoundaryCorrectedSolver(n, nrhs, coeffs)
+    solver.solve(d_d)
+    x = d_d.get()
+
+    for i in range(nrhs):
+        x_true = solve_near_toeplitz(coeffs, d[i, :])
+        assert_allclose(x_true, x[i, :])
