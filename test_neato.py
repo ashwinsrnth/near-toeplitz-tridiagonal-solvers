@@ -2,7 +2,7 @@ from pycuda import autoinit
 import pycuda.gpuarray as gpuarray
 import pycuda.driver as cuda
 import numpy as np
-from neato import NearToeplitzSolver, ToeplitzSolver, NearToeplitzBoundaryCorrectedSolver
+from neato import NearToeplitzSolver, PureToeplitzSolver, BoundaryCorrectedNearToeplitzSolver
 from scipy.linalg import solve_banded
 from numpy.testing import assert_allclose
 import pytest
@@ -66,7 +66,7 @@ def test_many_near_toeplitz_sytems(shmem):
     d = np.random.rand(nrhs, n)
     d_d = gpuarray.to_gpu(d)
     coeffs = np.random.rand(7)
-    solver = NearToeplitzSolver(n, nrhs, coeffs, use_shmem=shmem)
+    solver = NearToeplitzSolver(n, nrhs, coeffs)
     solver.solve(d_d)
     x = d_d.get()
 
@@ -74,37 +74,36 @@ def test_many_near_toeplitz_sytems(shmem):
         x_true = solve_near_toeplitz(coeffs, d[i, :])
         assert_allclose(x_true, x[i, :])
 
-def test_single_toeplitz_system(shmem=True):
+def test_single_pure_toeplitz_system():
     n = 32
     d = np.random.rand(n)
     d_d = gpuarray.to_gpu(d)
     coeffs = np.random.rand(3)
-    solver = ToeplitzSolver(n, 1, coeffs, use_shmem=shmem)
+    solver = PureToeplitzSolver(n, 1, coeffs)
     solver.solve(d_d)
     x = d_d.get()
     x_true = solve_toeplitz(coeffs, d)
     assert_allclose(x_true, x)
 
-def test_many_toeplitz_systems(shmem=True):
+def test_many_pure_toeplitz_systems():
     n = 32
     nrhs = 16
     d = np.random.rand(nrhs, n)
     d_d = gpuarray.to_gpu(d)
     coeffs = np.random.rand(3)
-    solver = ToeplitzSolver(n, nrhs, coeffs, use_shmem=shmem)
+    solver = PureToeplitzSolver(n, nrhs, coeffs)
     solver.solve(d_d)
     x = d_d.get()
-
     for i in range(nrhs):
         x_true = solve_toeplitz(coeffs, d[i, :])
         assert_allclose(x_true, x[i, :])
 
-def test_solve_inner_systems():
+def test_boundary_corrected_inner_systems():
     n = 34
     d = np.random.rand(n)
     d_d = gpuarray.to_gpu(d)
     coeffs = np.random.rand(7)
-    solver = NearToeplitzBoundaryCorrectedSolver(n, 1, coeffs)
+    solver = BoundaryCorrectedNearToeplitzSolver(n, 1, coeffs)
     solver._solve_inner_toeplitz_systems(d_d)
     x = d_d.get()
     x_true = np.zeros_like(x)*0.0
@@ -113,24 +112,24 @@ def test_solve_inner_systems():
     x_true[-1] = d[-1]/coeffs[-1]
     assert_allclose(x_true, x)
 
-def test_boundary_correction_single_system():
+def test_boundary_corrected_single_system():
     n = 34
     d = n.random.rand(n)
     d_d = gpuarray.to_gpu(d)
     coeffs = np.array([-1, 1, 1, 2, 1, 1, -1.], dtype=np.float64)
-    solver = NearToeplitzBoundaryCorrectedSolver(n, 1, coeffs)
+    solver = BoundaryCorrectedNearToeplitzSolver(n, 1, coeffs)
     solver.solve(d_d)
     x = d_d.get()
     x_true = solve_near_toeplitz(coeffs, d)
     assert_allclose(x_true, x)
 
-def test_boundary_correction_single_system():
+def test_boundary_corrected_single_system():
     n = 514
     nrhs = 512
     d = np.random.rand(nrhs, n)
     d_d = gpuarray.to_gpu(d)
     coeffs = np.random.rand(7)
-    solver = NearToeplitzBoundaryCorrectedSolver(n, nrhs, coeffs)
+    solver = BoundaryCorrectedNearToeplitzSolver(n, nrhs, coeffs)
     solver.solve(d_d)
     x = d_d.get()
 

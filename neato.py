@@ -28,7 +28,7 @@ class NearToeplitzSolver:
         assert np.int(np.log2(self.n)) == np.log2(self.n)
 
         # compute coefficients a, b, etc.,
-        a, b, c, k1, k2, b_first, k1_first, k1_last = _precompute_coefficients(self.n, self.coeffs)
+        a, b, c, k1, k2, b_first, k1_first, k1_last = _precompute_cyclic_reduction_coefficients(self.n, self.coeffs)
 
         # copy coefficients to buffers:
         self.a_d = gpuarray.to_gpu(a)
@@ -102,7 +102,7 @@ class NearToeplitzSolver:
     
     def _get_globalmem_kernels(self):
         dir = os.path.dirname(os.path.realpath(__file__))
-        with open(dir+'/_impls/globalmem.cu') as f:
+        with open(dir+'/kernels/NearToeplitzSolver.cu') as f:
             kernel_template = f.read()
         tpl = jinja2.Template(kernel_template)
         rendered_kernel = tpl.render(n=self.n, shared_size=self.n/2)
@@ -118,7 +118,7 @@ class NearToeplitzSolver:
 
     def _get_sharedmem_kernels(self):
         dir = os.path.dirname(os.path.realpath(__file__))
-        with open(dir+'/_impls/sharedmem.jinja2') as f:
+        with open(dir+'/kernels/NearToeplitzSolver_shmem.cu') as f:
             kernel_template = f.read()
         tpl = jinja2.Template(kernel_template)
         rendered_kernel = tpl.render(n=self.n, shared_size=self.n/2)
@@ -129,8 +129,8 @@ class NearToeplitzSolver:
         shmem_cyclic_reduction.prepare('PPPPPPPPPddddd')
         return shmem_cyclic_reduction
 
-class NearToeplitzBoundaryCorrectedSolver:
-    def __init__(self, n, nrhs, coeffs, use_shmem=True):
+class BoundaryCorrectedNearToeplitzSolver:
+    def __init__(self, n, nrhs, coeffs):
         '''
         Parameters
         ----------
@@ -138,19 +138,17 @@ class NearToeplitzBoundaryCorrectedSolver:
         nrhs: The number of right hand sides
         coeffs: A list of coefficients that make up the tridiagonal matrix:
             [b1, c1, ai, bi, ci, an, bn]
-        use_shmem: Use shared memory
         '''
         self.n = n
         self.nrhs = nrhs
         self.coeffs = coeffs
-        self.use_shmem = use_shmem
 
         # check that inner system size is a power of 2:
         assert np.int(np.log2(self.n - 2)) == np.log2(self.n - 2)
 
         # compute coefficients a, b, etc.,
         b1, c1, ai, bi, ci, an, bn = self.coeffs
-        a, b, c, k1, k2, _, _, _ = _precompute_coefficients(self.n-2, [bi, ci, ai, bi, ci, ai, bi])
+        a, b, c, k1, k2, _, _, _ = _precompute_cyclic_reduction_coefficients(self.n-2, [bi, ci, ai, bi, ci, ai, bi])
 
         # copy coefficients to buffers:
         self.a_d = gpuarray.to_gpu(a)
@@ -160,7 +158,7 @@ class NearToeplitzBoundaryCorrectedSolver:
         self.k2_d = gpuarray.to_gpu(k2)
 
         # get kernels:
-        self.shmem_cyclic_reduction_inner, self.boundary_correction = self._get_sharedmem_kernels()
+        self.inner_cyclic_reduction, self.boundary_correction = self._get_kernels()
 
         # prepare boundary correction:
         self._prepare_boundary_correction()
@@ -174,12 +172,14 @@ class NearToeplitzBoundaryCorrectedSolver:
         Solve the inner toeplitz systems system
         for rhs d, given storage for the solution
         vector in x.
+        Also solve the 1-by-1 subsystems at
+        the first and last index.
         '''
         b1, c1, ai, bi, ci, an, bn = self.coeffs
 
         # CR algorithm
         # ============================================
-        self.shmem_cyclic_reduction_inner.prepared_call(
+        self.inner_cyclic_reduction.prepared_call(
                  (self.nrhs, 1, 1),
                  ((self.n-2)//2, 1, 1),
                  self.a_d.gpudata,
@@ -205,24 +205,24 @@ class NearToeplitzBoundaryCorrectedSolver:
                 self.x_LH_1,
                 self.x_UH_N)
 
-    def _get_sharedmem_kernels(self):
+    def _get_kernels(self):
         dir = os.path.dirname(os.path.realpath(__file__))
-        with open(dir+'/_impls/sharedmem.jinja2') as f:
+        with open(dir+'/kernels/BoundaryCorrectedNearToeplitzSolver.cu') as f:
             kernel_template = f.read()
         tpl = jinja2.Template(kernel_template)
         rendered_kernel = tpl.render(n=(self.n-2), shared_size=(self.n-1)/2)
         module = compiler.SourceModule(rendered_kernel,
                 options=['-O2'])
 
-        shmem_cyclic_reduction_inner = module.get_function(
+        inner_cyclic_reduction = module.get_function(
             'innerToeplitzCyclicReductionKernel')
-        shmem_cyclic_reduction_inner.prepare('PPPPPPddddd')
+        inner_cyclic_reduction.prepare('PPPPPPddddd')
 
         boundary_correction = module.get_function(
             'boundaryCorrectionKernel')
         boundary_correction.prepare('PPPPPPPdd')
 
-        return shmem_cyclic_reduction_inner, boundary_correction
+        return inner_cyclic_reduction, boundary_correction
 
     def _prepare_boundary_correction(self):
         N = self.n - 2
@@ -255,29 +255,27 @@ class NearToeplitzBoundaryCorrectedSolver:
         self.c2_reduced_d = gpuarray.to_gpu(c_reduced)
 
 
-class ToeplitzSolver:
+class PureToeplitzSolver:
 
-    def __init__(self, n, nrhs, coeffs, use_shmem=False):
+    def __init__(self, n, nrhs, coeffs):
         '''
         Parameters
         ----------
         n: The size of the tridiagonal system.
         nrhs: The number of right hand sides
         coeffs: A list of coefficients that make up the tridiagonal matrix:
-            [b1, c1, ai, bi, ci, an, bn]
-        use_shmem: Use shared memory
+            [ai, bi, ci]
         '''
         self.n = n
         self.nrhs = nrhs
         self.coeffs = coeffs
-        self.use_shmem = use_shmem
 
         # check that system_size is a power of 2:
         assert np.int(np.log2(self.n)) == np.log2(self.n)
 
         # compute coefficients a, b, etc.,
         ai, bi, ci = self.coeffs
-        a, b, c, k1, k2, _, _, _ = _precompute_coefficients(self.n, [bi, ci, ai, bi, ci, ai, bi])
+        a, b, c, k1, k2, _, _, _ = _precompute_cyclic_reduction_coefficients(self.n, [bi, ci, ai, bi, ci, ai, bi])
 
         # copy coefficients to buffers:
         self.a_d = gpuarray.to_gpu(a)
@@ -287,7 +285,7 @@ class ToeplitzSolver:
         self.k2_d = gpuarray.to_gpu(k2)
         
         # get kernels:
-        self.shmem_cyclic_reduction = self._get_sharedmem_kernels()
+        self.cyclic_reduction = self._get_kernels()
 
     def solve(self, x_d):
         '''
@@ -299,7 +297,7 @@ class ToeplitzSolver:
 
         # CR algorithm
         # ============================================
-        self.shmem_cyclic_reduction.prepared_call(
+        self.cyclic_reduction.prepared_call(
                  (self.nrhs, 1, 1),
                  (self.n//2, 1, 1),
                  self.a_d.gpudata,
@@ -311,20 +309,20 @@ class ToeplitzSolver:
                  ai, bi, ci
                  )
 
-    def _get_sharedmem_kernels(self):
+    def _get_kernels(self):
         dir = os.path.dirname(os.path.realpath(__file__))
-        with open(dir+'/_impls/sharedmem.jinja2') as f:
+        with open(dir+'/kernels/PureToeplitzSolver_shmem.cu') as f:
             kernel_template = f.read()
         tpl = jinja2.Template(kernel_template)
         rendered_kernel = tpl.render(n=self.n, shared_size=self.n/2)
         module = compiler.SourceModule(rendered_kernel,
                 options=['-O2'])
-        shmem_cyclic_reduction = module.get_function(
-            'toeplitzCyclicReductionKernel')
-        shmem_cyclic_reduction.prepare('PPPPPPddd')
-        return shmem_cyclic_reduction
+        cyclic_reduction = module.get_function(
+            'pureToeplitzCyclicReductionKernel')
+        cyclic_reduction.prepare('PPPPPPddd')
+        return cyclic_reduction
 
-def _precompute_coefficients(system_size, coeffs):
+def _precompute_cyclic_reduction_coefficients(system_size, coeffs):
     '''
     The a, b, c, k1, k2
     used in the Cyclic Reduction Algorithm can be
@@ -400,7 +398,6 @@ def _precompute_coefficients(system_size, coeffs):
     b[-1] = b_last
 
     return a, b, c, k1, k2, b_first, k1_first, k1_last
-
 
 def _solve_toeplitz_system(coeffs, rhs):
     N = rhs.size
