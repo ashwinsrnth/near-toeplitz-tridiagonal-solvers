@@ -402,5 +402,5 @@ def _precompute_cyclic_reduction_coefficients(system_size, coeffs):
 def _solve_toeplitz_system(coeffs, rhs):
     N = rhs.size
     M = sparse.diags((np.ones(N-1)*coeffs[0], np.ones(N)*coeffs[1], np.ones(N-1)*coeffs[2]),
-                offsets=[-1, 0, +1])
+                offsets=[-1, 0, +1]).tocsc()
     return sparse_la.spsolve(M, rhs)

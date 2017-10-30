@@ -2,7 +2,7 @@ from pycuda import autoinit
 import pycuda.gpuarray as gpuarray
 import pycuda.driver as cuda
 import numpy as np
-from neato import NearToeplitzSolver, PureToeplitzSolver, BoundaryCorrectedNearToeplitzSolver
+from neato.neato import NearToeplitzSolver, PureToeplitzSolver, BoundaryCorrectedNearToeplitzSolver
 from scipy.linalg import solve_banded
 from numpy.testing import assert_allclose
 import pytest
